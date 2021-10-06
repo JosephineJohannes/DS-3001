@@ -56,6 +56,7 @@ str(cereal)
 
 (sodium_sc <- scale(cereal$sodium, center = TRUE, scale = TRUE))#center and standardized 
 #min-max scaling, placing the numbers between 0 and 1. 
+# divides by variance and becomes Z-score (centered and standardized from the mean)
 
 ###Build our own normalizer, which is maybe how I would go if given the option. If you need to do multiple columns use lapply. See this referred to as a min-max scaler function.
 
@@ -64,11 +65,13 @@ normalize <- function(x){
 }
 
 (sodium_n <- normalize(cereal$sodium))
-
+# happens with the continuous variables 
+# puts all on the same scale 
 # However, before we can apply this we need to make sure our data classes are correct. 
 
 (column_index <- tibble(colnames(cereal)))
-
+# create an index (tibble- another form of table)
+# important to have the same range 
 str(cereal)
 table(vitamins)
 #What about mfr and type?
@@ -79,6 +82,8 @@ cereal$mfr <- fct_collapse(cereal$mfr,
                            K="K",
                         other = c("A","N","P","Q","R")
                         )
+# collapse (from dplyr): creates new columns and collapses columns 
+# c = concatenate (creates a list into others )
 column_index
 table(type)
 
@@ -90,10 +95,11 @@ str(cereal)
 #Now we can move forward in normalizing the numeric values, create a index based on numeric columns: 
 
 abc <- names(select_if(cereal, is.numeric))# select function to find the numeric variables 
+# select the names IF they are numeric variables and use it as an index 
 
 #Use lapply to normalize the numeric values 
 
-cereal[abc] <- as_tibble(lapply(cereal[abc], normalize))
+cereal[abc] <- as_tibble(lapply(cereal[abc], normalize)) # normalizing function
 
 str(cereal)
 
@@ -107,7 +113,8 @@ str(cereal)
 # Next let's one-hot encode those factor variables/character 
 
 ?one_hot
-
+# works well with a data table and pass in serial as a data table 
+# auto identify the columns, drops the columns as needed, and identify the NAs
 cereal_1h <- one_hot(as.data.table(cereal),cols = "auto",sparsifyNAs = TRUE,naCols = TRUE,dropCols = TRUE,dropUnusedLevels = TRUE) 
 View(cereal_1h)
 ```
@@ -116,15 +123,18 @@ View(cereal_1h)
 ### Baseline/Prevalance 
 ```{r}
 #Essentially the target to which we are trying to out perform with our model. 
+# PErcentage of number 1s in the target variable 
 describe(cereal_1h$rating)
 (box <- boxplot(cereal_1h$rating, horizontal = TRUE)) 
-box$stats
-fivenum(cereal$rating)
+box$stats # pulls out box plot statistics 
+fivenum(cereal$rating) # five number summary of any numeric list 
 ?fivenum#thanks Tukey!
 
 #added this a predictor versus replacing the numeric version
 (cereal_1h$rating_f <- cut(cereal_1h$rating,c(-1,.43,1),labels = c(0,1)))
-
+#create new variable and add it to the data frame 
+# requires 3 cuts: where to begin, cut below the 4th number, and anything 
+# between 0.43 and 1 
 str(cereal_1h)
 View(cereal_1h)
 #So no let's check the prevalence 
