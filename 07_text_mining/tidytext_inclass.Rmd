@@ -60,9 +60,10 @@ View(ah_ngrams)
 
 ah_count <- ah_word %>%
   count(word, sort=TRUE)
-
+# tokenize by words and function will count the number of words and sort from most to least 
+#can give us an indication of what is happening 
 ah_count$word <- as.factor(ah_count$word)  
-
+# the, it, to: stop words because they're not really related to context 
 View(ah_count)
 #Quick plot 
 
@@ -79,6 +80,10 @@ ggplot(
 
 View(stop_words)
 
+#removing a lexicon of words and use antijoin 
+# anti-join looks for words that are similar pull those words out 
+#using pipe functions and pass in the tokenized word list 
+# pulls out all the rows with stop words 
 ah_word_sw <- ah_word %>%
       anti_join(stop_words)
 

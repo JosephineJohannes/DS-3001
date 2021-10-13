@@ -1,0 +1,715 @@
+---
+title: "New ML Bootcamp Lab"
+author: "Josephine Johannes"
+date: "9/29/2021"
+output: html_document
+---
+## Machine Learning BootCamp Lab 
+### Author: Josephine Johannes 
+
+#### Initial Setup
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include=FALSE}
+library(tidyverse)
+library(psych)
+library(mltools)
+library(data.table)
+library(caret)
+library("xlsx")
+```
+### Dataset #1: [Association of Tennis Professional Matches in 2016](https://data.world/jonloyens/advanced-visualization-sharing-in-data-world/workspace/file?filename=atp_matches_2016.csv)
+
+## Phase I
+Working to develop a model that can predict the age it takes to win a tournament
+
+Independent Business Metric - Assuming that an older age would increase tennis experience, can we predict which age is the most likely to win a tennis match? 
+
+## Phase II 
+
+### Scale/Center/Normalizing
+
+```{r}
+tennis <- read_csv("~/R 2021/DS-3001-Own/data/atp_matches_2016.csv")
+tennis <- tennis[1:100,1:15] # took a subset of data because lots of data
+attach(tennis)#is this a good idea? 
+describe(tennis)
+str(tennis)
+
+(response_c <- scale(tennis$winner_age, center = TRUE, scale = FALSE))#center but not standardized
+
+(response_sc <- scale(tennis$winner_age, center = TRUE, scale = TRUE))#center and standardized 
+
+###Build our own normalizer, which is maybe how I would go if given the option. If you need to do multiple columns use lapply. See this referred to as a min-max scaler function.
+
+normalize <- function(x){
+ (x - min(x)) / (max(x) - min(x))
+}
+
+(response_n <- normalize(tennis$winner_age))
+# happens with the continuous variables 
+
+(column_index <- tibble(colnames(tennis)))
+# create an index (tibble- another form of table)
+# important to have the same range 
+str(tennis)
+tennis$winner_name<- fct_collapse(tennis$winner_name,
+                           'Borna Coric' ="Borna Coric", #New to Old
+                           'Milos Raonic' ="Milos Raonic",
+                           'Novak Djokovic' ="Novak Djokovic",
+                           'Stanislas Wawrinka' = "Stanislas Wawrinka",
+                           More=c("Aljaz Bedene","Andrey Kuznetsov","Andrey Rublev","Ante Pavic","Austin Krajicek","Benoit Paire","Bernard Tomic","Damir Dzumhur","Daniel Munoz De La Nava","David Ferrer","David Goffin", "Denis Kudla","Dominic Thiem","Fabio Fognini","Fernando Verdasco","Gilles Muller","Grigor Dimitrov","Guillermo Garcia Lopez","Hyeon Chung","Illya Marchenko","Ivan Dodig","Jack Sock","Jeremy Chardy","Jo Wilfried Tsonga","John Isner","John Millman","Kei Nishikori","Kevin Anderson","Kyle Edmund","Leonardo Mayer","Luca Vanni","Lucas Pouille","Lukas Rosol","Marin Cilic","Mikhail Kukushkin","Pablo Andujar","Paul Henri Mathieu","Radek Stepanek","Rafael Nadal","Ramkumar Ramanathan","Ricardas Berankis","Roberto Bautista Agut","Robin Haase","Roger Federer","Teymuraz Gabashvili","Thomas Fabbiano",            "Tobias Kamke","Tomas Berdych","Viktor Troicki")
+                           )
+tennis$winner_ioc<- fct_collapse(tennis$winner_ioc, ESP = "ESP", FRA = "FRA", CRO = "CRO", SUI = "SUI", Other = c("ARG", "AUS", "AUT", "BEL", "BIH", "BUL", "CAN", "CZE", "GBR", "GER", "IND", "ITA", "JPN", "KAZ", "KOR", "LTU", "LUX", "NED", "RSA", "RUS", "SRB", "UKR", "USA"))
+column_index
+table(tennis$winner_ioc)
+
+# convert into factors 
+tennis[,c(1,2, 3, 4, 5, 10, 12, 14)] <- lapply(tennis[,c(1,2, 3, 4, 5, 10, 12, 14)], as.factor)
+str(tennis)
+
+#Now we can move forward in normalizing the numeric values, create a index based on numeric columns: 
+
+tennis_num <- names(select_if(tennis, is.numeric))
+tennis[tennis_num] <- as_tibble(lapply(tennis[tennis_num], normalize)) # 
+str(tennis)
+```
+
+### One-hot Encoding 
+```{r}
+tennis_1h <- one_hot(as.data.table(tennis),cols = "auto",sparsifyNAs = TRUE,naCols = TRUE,dropCols = TRUE,dropUnusedLevels = TRUE) 
+View(tennis_1h)
+```
+
+
+### Baseline/Prevalance 
+```{r}
+describe(tennis_1h$winner_age)
+(box <- boxplot(tennis_1h$winner_age, horizontal = TRUE)) 
+box$stats # pulls out box plot statistics 
+fivenum(tennis_1h$winner_age) # five number summary of any numeric list 
+?fivenum#thanks Tukey!
+
+#added this a predictor versus replacing the numeric version
+(tennis_1h$age_f <- cut(tennis_1h$winner_age,c(-1,.06398,1),labels = c(0,1)))
+#create new variable and add it to the data frame 
+# requires 3 cuts: where to begin, cut below the 4th number, and anything 
+# between 0.43 and 1 
+str(tennis_1h)
+View(tennis_1h)
+#So no let's check the prevalence 
+(prevalence <- table(tennis_1h$age_f)[[2]]/length(tennis_1h$age_f))
+table(tennis_1h$age_f)
+
+```
+
+![](Boxplot.png)
+
+### Initial Model Building: Decision Tree Style  
+```{r}
+# Training|Evaluation, Tune|Evaluation, Test|Evaluation
+# Divide up our data into three parts, Training, Tuning, and Test
+tennis_dt <- tennis_1h[,-c("tourney_id", "draw_size", "winner_seed", "winner_entry")]
+view(tennis_dt)
+t_index_1 <- caret::createDataPartition(tennis_dt$age_f,
+                                           times=1,
+                                           p = 0.70,
+                                           groups=1,
+                                           list=FALSE)
+View(t_index_1)
+dim(tennis_dt)
+
+train <- tennis_dt[t_index_1,]
+tune_and_test <- tennis_dt[-t_index_1, ]
+
+#The we need to use the function again to create the tuning set 
+
+tune_and_test_index <- createDataPartition(tune_and_test$age_f,
+                                           p = .5,
+                                           list = FALSE,
+                                           times = 1)
+
+tune <- tune_and_test[tune_and_test_index, ]
+test <- tune_and_test[-tune_and_test_index, ]
+
+dim(train)
+dim(tune)
+dim(test)
+
+```
+
+#### Using Caret package to fit a C5.0 version of a decision tree
+Setting up the cross validation
+```{r}
+#Cross validation process 
+fitControl <- trainControl(method = "repeatedcv",
+                          number = 10,
+                          repeats = 5, 
+                          returnResamp="all",
+                          savePredictions = 'final') 
+```
+
+#### Training and Evaluation 
+
+```{r, include=FALSE}
+features <- train[,-"age_f"]
+target <- train[,"age_f"]
+
+View(target)
+
+str(features)
+
+set.seed(1984)
+tennis_mdl <- train(x=features,
+                y=target$age_f,
+                trControl=fitControl,
+                method="C5.0",
+                verbose=TRUE)
+
+tennis_mdl
+```
+
+Tune and Evaluation 
+```{r}
+tennis_predict = predict(tennis_mdl,tune,type= "raw")
+
+confusionMatrix(as.factor(tennis_predict), 
+                as.factor(tune$age_f), 
+                dnn=c("Prediction", "Actual"), 
+                mode = "sens_spec")
+
+varImp(tennis_mdl)
+
+plot(tennis_mdl)
+
+
+grid <- expand.grid(.winnow = c(TRUE,FALSE), 
+                    .trials=c(20,30,40), 
+                    .model=c("tree","rules"))
+set.seed(1984)
+tennis_mdl_tune <- train(x=features,
+                y=target$age_f,
+                tuneGrid=grid,
+                trControl=fitControl,
+                method="C5.0",
+                verbose=TRUE)
+
+tennis_mdl_tune
+tennis_mdl
+
+plot(tennis_mdl_tune)
+
+# Want to evaluation again with the tune data using the new model 
+
+tennis_predict_tune = predict(tennis_mdl_tune,tune,type= "raw")
+
+tennis_predict_tune
+
+confusionMatrix(as.factor(tennis_predict_tune), 
+                as.factor(tune$age_f), 
+                dnn=c("Prediction", "Actual"), 
+                mode = "sens_spec")
+
+
+```
+Test 
+
+```{r}
+tennis_predict_test = predict(tennis_mdl_tune,test,type= "raw")
+
+confusionMatrix(as.factor(tennis_predict_test), 
+                as.factor(test$age_f), 
+                dnn=c("Prediction", "Actual"), 
+                mode = "sens_spec")
+
+```
+**Results**
+Did the model perform better or worse than the training version?
+- For this specific dataset, the initial model was said to have an accuracy of 93.33%. An accuracy rate of 93% is not bad, and I would believe in the data. Because there was an issue in the testing ConfusionMatrix table, I can't tell if the new model performed better or worse than the training model. 
+
+### Dataset 2: Fire Emergency Response Incident Reports in Austin 
+## Phase I
+
+```{r}
+#Working to developed a model than can predict the time it takes for firefighters 
+# to depart 
+
+# Inference versus Prediction 
+
+# Independent Business Metric - Assuming that shorter periods of time mean there is no late response, can we predict which times make the firefighters have a late response? 
+
+```
+
+## Phase II 
+
+### Scale/Center/Normalizing
+
+```{r}
+fire <- read_csv("~/R 2021/DS-3001-Own/data/Austin-Fire-Emergency-Response-Incidents-2013-through-2106.csv")
+attach(fire)#is this a good idea? 
+describe(fire)
+str(fire)
+
+(response_c <- scale(fire$`Response Time (s)`, center = TRUE, scale = FALSE))#center but not standardized
+
+(response_sc <- scale(fire$'Response Time (s)', center = TRUE, scale = TRUE))#center and standardized 
+
+###Build our own normalizer, which is maybe how I would go if given the option. If you need to do multiple columns use lapply. See this referred to as a min-max scaler function.
+
+normalize <- function(x){
+ (x - min(x)) / (max(x) - min(x))
+}
+
+(response_n <- normalize(fire$'Response Time (s)'))
+# happens with the continuous variables 
+
+(column_index <- tibble(colnames(fire)))
+# create an index (tibble- another form of table)
+# important to have the same range 
+str(fire)
+table(CalendarYear)
+table(Problem)
+fire$Problem <- fct_collapse(fire$Problem,
+                           Auto="AUTO - Auto Fire", #New to Old
+                           Elec="ELEC - Electrical Fire",
+                           Trash="TRASH - Trash Fire",
+                           More=c("BOX -Structure Fire","BBQ - Unsafe Cooking", "BOXL- Structure Fire", "DUMP - Dumpster Fire", "GRASS - Small Grass Fire", "BRSHL - Brush Alarm / Light")
+                           )
+# collapse (from dplyr): creates new columns and collapses columns 
+# c = concatenate (creates a list into others )
+column_index
+table(type)
+
+#columns 4, 5, 6, 7, 8, and 10 need to be converted into factors
+fire[,c(4,5,6,7, 8, 10)] <- lapply(fire[,c(4,5,6,7, 8, 10)], as.factor)
+str(fire)
+
+#Now we can move forward in normalizing the numeric values, create a index based on numeric columns: 
+
+fire_num <- names(select_if(fire, is.numeric))
+fire[fire_num] <- as_tibble(lapply(fire[fire_num], normalize)) # 
+str(fire)
+
+fire <- fire %>% select(X1, CalendarYear:'Calltaker Agency (AFD or EMS)','Response Time (s)' )
+#fire <- fire[CalendarYear, 'Cancellation Status', 'Response Status', PriorityDescription, 'Response Time (s)', Problem, late_response]
+```
+
+### One-hot Encoding 
+```{r}
+fire_1h <- one_hot(as.data.table(fire),cols = "auto",sparsifyNAs = TRUE,naCols = TRUE,dropCols = TRUE,dropUnusedLevels = TRUE) 
+View(fire_1h)
+```
+
+
+### Baseline/Prevalance 
+```{r}
+describe(fire_1h$'Response Time (s)')
+(box <- boxplot(fire_1h$'Response Time (s)', horizontal = TRUE)) 
+box$stats # pulls out box plot statistics 
+fivenum(fire_1h$'Response Time (s)') # five number summary of any numeric list 
+?fivenum#thanks Tukey!
+
+#added this a predictor versus replacing the numeric version
+(fire_1h$response_f <- cut(fire_1h$'Response Time (s)',c(-1,.0765,1),labels = c(0,1)))
+#create new variable and add it to the data frame 
+# requires 3 cuts: where to begin, cut below the 4th number, and anything 
+# between 0.43 and 1 
+str(fire_1h)
+View(fire_1h)
+#So no let's check the prevalence 
+(prevalence <- table(fire_1h$response_f)[[2]]/length(fire_1h$response_f))
+table(fire_1h$response_f)
+
+```
+
+![](Boxplot.png)
+
+### Initial Model Building: Decision Tree Style  
+```{r}
+# Training|Evaluation, Tune|Evaluation, Test|Evaluation
+# Divide up our data into three parts, Training, Tuning, and Test
+fire_dt <- fire_1h[,-c("X1")]
+view(fire_dt)
+f_index_1 <- caret::createDataPartition(fire_dt$response_f,
+                                           times=1,
+                                           p = 0.70,
+                                           groups=1,
+                                           list=FALSE)
+View(f_index_1)
+dim(fire_dt)
+
+train <- fire_dt[f_index_1,]
+tune_and_test <- fire_dt[-f_index_1, ]
+
+#The we need to use the function again to create the tuning set 
+
+tune_and_test_index <- createDataPartition(tune_and_test$response_f,
+                                           p = .5,
+                                           list = FALSE,
+                                           times = 1)
+
+tune <- tune_and_test[tune_and_test_index, ]
+test <- tune_and_test[-tune_and_test_index, ]
+
+dim(train)
+dim(tune)
+dim(test)
+
+```
+
+#### Using Caret package to fit a C5.0 version of a decision tree
+Setting up the cross validation
+```{r}
+#Cross validation process 
+fitControl <- trainControl(method = "repeatedcv",
+                          number = 10,
+                          repeats = 5, 
+                          returnResamp="all",
+                          savePredictions = 'final') 
+```
+
+#### Training and Evaluation 
+
+```{r, include=FALSE}
+features <- train[,-"response_f"]
+target <- train[,"response_f"]
+
+View(target)
+
+str(features)
+
+set.seed(1984)
+fire_mdl <- train(x=features,
+                y=target$response_f,
+                trControl=fitControl,
+                method="C5.0",
+                verbose=TRUE)
+
+fire_mdl
+```
+
+Tune and Evaluation 
+```{r}
+fire_predict = predict(fire_mdl,tune,type= "raw")
+
+confusionMatrix(as.factor(fire_predict), 
+                as.factor(tune$response_f), 
+                dnn=c("Prediction", "Actual"), 
+                mode = "sens_spec")
+
+varImp(fire_mdl)
+
+plot(fire_mdl)
+
+
+grid <- expand.grid(.winnow = c(TRUE,FALSE), 
+                    .trials=c(20,30,40), 
+                    .model=c("tree","rules"))
+set.seed(1984)
+fire_mdl_tune <- train(x=features,
+                y=target$response_f,
+                tuneGrid=grid,
+                trControl=fitControl,
+                method="C5.0",
+                verbose=TRUE)
+
+fire_mdl_tune
+fire_mdl
+
+plot(fire_mdl_tune)
+
+# Want to evaluation again with the tune data using the new model 
+
+fire_predict_tune = predict(fire_mdl_tune,tune,type= "raw")
+
+fire_predict_tune
+
+confusionMatrix(as.factor(fire_predict_tune), 
+                as.factor(tune$response_f), 
+                dnn=c("Prediction", "Actual"), 
+                mode = "sens_spec")
+
+
+```
+Test 
+
+```{r}
+fire_predict_test = predict(fire_mdl_tune,test,type= "raw")
+
+confusionMatrix(as.factor(fire_predict_test), 
+                as.factor(tune$response_f), 
+                dnn=c("Prediction", "Actual"), 
+                mode = "sens_spec")
+
+```
+**Results**
+Did the model perform better or worse than the training version?
+- For this specific dataset, the initial model was said to have an accuracy of 1. However, it is less likely that this model has an accuracy rate of 100%, so I believe that there may have been an error between the tuning and testing phase. I was also unable to use the confusion matrix, so I am unable to tell if the new model performed better or worse than the training model. 
+
+
+### Dataset 3: Shootings in the US by City and State  
+## Phase I
+[Shootings.csv](https://data.world/jonloyens/intermediate-data-world)
+
+```{r}
+#Working to developed a model than can predict shoot quality rating. 
+
+#Assuming we are able to optimizing and make recommendations how does this translate into a business context? 
+
+# Inference versus Prediction 
+
+# Independent Business Metric - Assuming that higher ratings results in higher sales, can we predict which new shoots that enter the market over the next year will perform the best?   
+
+```
+
+## Phase II 
+
+### Scale/Center/Normalizing
+
+```{r}
+shoot <- read_csv("~/R 2021/DS-3001-Own/data/shootingscitystate.csv")
+shoot <- shoot[1:100,4:12] # took subset of data for faster analysis
+View(shoot)
+attach(shoot)#is this a good idea? 
+describe(age)
+?scale
+str(shoot)
+
+
+#(age_c <- scale(shoot$age, center = TRUE, scale = FALSE))#center but not standardized
+
+#(age <- scale(shoot$age, center = TRUE, scale = TRUE))#center and standardized 
+#min-max scaling, placing the numbers between 0 and 1. 
+# divides by variance and becomes Z-score (centered and standardized from the mean)
+
+###Build our own normalizer, which is maybe how I would go if given the option. If you need to do multiple columns use lapply. See this referred to as a min-max scaler function.
+
+normalize <- function(x){
+ (x - min(x)) / (max(x) - min(x))
+}
+
+#(age_n <- normalize(shoot$age))
+# happens with the continuous variables 
+# puts all on the same scale 
+# However, before we can apply this we need to make sure our data classes are correct. 
+
+(column_index <- tibble(colnames(shoot)))
+# create an index (tibble- another form of table)
+# important to have the same range 
+str(shoot)
+table(signs_of_mental_illness)
+#What about mfr and type?
+table(armed)#we should collapse this factor, it has way too many categories G,K and everyone else. Usually don't want more than 5 categories  
+shoot$armed <- fct_collapse(shoot$armed,gun=c("gun", "gun and car"),blade=c("box cutter", "knife"),unknown=c("undetermined", "unknown weapon"),toy = "toy weapon",other = c("hatchet","piece of wood","pole","Taser","unarmed", "vehicle"))
+
+# collapse (from dplyr): creates new columns and collapses columns 
+# c = concatenate (creates a list into others )
+column_index
+table(type)
+
+#Looks like columns 2,3,12 and 13 need to be converted to factors
+shoot[,c(6, 7, 8, 9)] <- lapply(shoot[,c(6, 7, 8, 9)], as.factor)
+
+str(shoot)
+
+#Now we can move forward in normalizing the numeric values, create a index based on numeric columns: 
+
+abc <- names(select_if(shoot, is.numeric))# select function to find the numeric variables 
+# select the names IF they are numeric variables and use it as an index 
+
+#Use lapply to normalize the numeric values 
+
+shoot[abc] <- as_tibble(lapply(shoot[abc], normalize)) # normalizing function
+shoot$age <- age
+str(shoot)
+
+```
+
+
+### One-hot Encoding 
+[ML Tools One-Hot Overview](https://www.rdocumentation.org/packages/mltools/versions/0.3.5/topics/one_hot)
+
+```{r}
+# Next let's one-hot encode those factor variables/character 
+
+?one_hot
+# works well with a data table and pass in serial as a data table 
+# auto identify the columns, drops the columns as needed, and identify the NAs
+shoot_1h <- one_hot(as.data.table(shoot),cols = "auto",sparsifyNAs = TRUE,naCols = TRUE,dropCols = TRUE,dropUnusedLevels = TRUE) 
+View(shoot_1h)
+```
+
+
+### Baseline/Prevalance 
+```{r}
+#Essentially the target to which we are trying to out perform with our model. 
+# PErcentage of number 1s in the target variable 
+describe(shoot_1h$age)
+(box <- boxplot(shoot_1h$age, horizontal = TRUE)) 
+box$stats # pulls out box plot statistics 
+fivenum(shoot$age) # five number summary of any numeric list 
+?fivenum#thanks Tukey!
+
+#added this a predictor versus replacing the numeric version
+(shoot_1h$age_f <- cut(shoot_1h$age,c(-1,.54,1),labels = c(0,1)))
+#create new variable and add it to the data frame 
+# requires 3 cuts: where to begin, cut below the 4th number, and anything 
+# between 0.43 and 1 
+str(shoot_1h)
+View(shoot_1h)
+#So no let's check the prevalence 
+(prevalence <- table(shoot_1h$age_f)[[2]]/length(shoot_1h$age_f))
+table(shoot_1h$age_f)
+
+```
+
+![](Boxplot.png)
+
+### Initial Model Building: Decision Tree Style  
+```{r}
+# Training|Evaluation, Tune|Evaluation, Test|Evaluation
+# Divide up our data into three parts, Training, Tuning, and Test
+
+#There is not a easy way to create 3 partitions using the createDataPartitions
+
+#so we are going to use it twice. Mostly because we want to stratify on the variable we are working to predict. What does that mean?  
+
+#clean up our dataset a bit by dropping the original ranking variable and the shoot name which we can't really use. 
+
+shoot_dt <- shoot_1h[,-c("date")]
+view(shoot_dt)
+
+s_part_index_1 <- caret::createDataPartition(shoot_dt$age_f,
+                                           times=1,
+                                           p = 0.70,
+                                           groups=1,
+                                           list=FALSE)
+View(s_part_index_1)
+dim(shoot_dt)
+
+train <- shoot_dt[s_part_index_1,]
+tune_and_test <- shoot_dt[-s_part_index_1, ]
+
+#The we need to use the function again to create the tuning set 
+
+tune_and_test_index <- createDataPartition(tune_and_test$age_f,
+                                           p = .5,
+                                           list = FALSE,
+                                           times = 1)
+
+tune <- tune_and_test[tune_and_test_index, ]
+test <- tune_and_test[-tune_and_test_index, ]
+
+dim(train)
+dim(tune)
+dim(test)
+
+```
+
+
+#### Using Caret package to fit a C5.0 version of a decision tree
+Setting up the cross validation
+```{r}
+#Cross validation process 
+
+fitControl <- trainControl(method = "repeatedcv",
+                          number = 10,
+                          repeats = 5, 
+                          returnResamp="all",
+                          savePredictions = 'final') 
+
+# number - number of folds
+# repeats - number of times the CV is repeated, here it's 5 take the average of
+# those 5 repeats
+# returnResamp - essential verbose, save all of the sampling data
+
+# Choose the features and classes
+
+```
+
+#### Training and Evaluation 
+```{r}
+features <- train[,-"age_f"]
+target <- train[,"age_f"]
+
+View(target)
+
+str(features)
+
+set.seed(1984)
+shoot_mdl <- train(x=features,
+                y=target$age_f,
+                trControl=fitControl,
+                method="C5.0",
+                verbose=TRUE)
+
+shoot_mdl
+```
+
+Tune and Evaluation 
+```{r}
+shoot_predict = predict(shoot_mdl,tune,type= "raw")
+
+confusionMatrix(as.factor(shoot_predict), 
+                as.factor(tune$rating_f), 
+                dnn=c("Prediction", "Actual"), 
+                mode = "sens_spec")
+
+varImp(shoot_mdl)
+
+plot(shoot_mdl)
+
+
+grid <- expand.grid(.winnow = c(TRUE,FALSE), 
+                    .trials=c(20,30,40), 
+                    .model=c("tree","rules"))
+set.seed(1984)
+shoot_mdl_tune <- train(x=features,
+                y=target$age_f,
+                tuneGrid=grid,
+                trControl=fitControl,
+                method="C5.0",
+                verbose=TRUE)
+
+shoot_mdl_tune
+shoot_mdl
+
+plot(shoot_mdl_tune)
+
+# Want to evaluation again with the tune data using the new model 
+
+shoot_predict_tune = predict(shoot_mdl_tune,tune,type= "raw")
+
+shoot_predict_tune
+
+confusionMatrix(as.factor(shoot_predict_tune), 
+                as.factor(tune$age_f), 
+                dnn=c("Prediction", "Actual"), 
+                mode = "sens_spec")
+
+
+```
+
+Test 
+
+```{r}
+shoot_predict_test = predict(shoot_mdl_tune,test,type= "raw")
+
+confusionMatrix(as.factor(shoot_predict_test), 
+                as.factor(tune$age_f), 
+                dnn=c("Prediction", "Actual"), 
+                mode = "sens_spec")
+
+```
+Findings: 
+ -From the initial model, the accuracy for each of the trials during cross-validation were 1 which means that there may have been something wrong with the data preparation again. As stated in the cross validation section, the final values used for the model were trials = 1, model = rules
+ and winnow = TRUE.
+
+
+  * Write a summary of your findings. What do you know now that you didn't when you started? What items are you concerned about? 
+From the three datasets, I found that two of them were unable to undergo the decision tree which means that there may have been something wrong with the data preparation or the dataset. I think it would be important for me to understand how each column is important in understanding the overall dataset and how to differentiate between a continuous and factor variable. 
+Overall, I feel like I understand more about how machine learning works within R because I have not been exposed to machine learning before. I am concerned about knowing when my data is prepared the right way and how to fix those problems in the future. 
+
+

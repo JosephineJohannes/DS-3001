@@ -1,0 +1,759 @@
+---
+title: "ML_Bootcamp Lab"
+author: "Josephine Johannes"
+date: "9/28/2021"
+output: html_document
+---
+## Machine Learning BootCamp Lab 
+### Author: Josephine Johannes 
+
+### Dataset #1: Fire Emergency Response Incident Reports in Austin 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include=FALSE}
+library(tidyverse)
+library(psych)
+library(mltools)
+library(data.table)
+library(caret)
+```
+## Phase I
+
+```{r}
+#Working to developed a model than can predict the time it takes for firefighters 
+# to depart 
+
+# Inference versus Prediction 
+
+# Independent Business Metric - Assuming that shorter periods of time mean there is no late response, can we predict which times make the firefighters have a late response? 
+
+```
+
+## Phase II 
+
+### Scale/Center/Normalizing
+
+```{r}
+fire <- read_csv("~/R 2021/DS-3001-Own/data/Austin-Fire-Emergency-Response-Incidents-2013-through-2106.csv")
+attach(fire)#is this a good idea? 
+describe(fire)
+str(fire)
+
+(response_c <- scale(fire$`Response Time (s)`, center = TRUE, scale = FALSE))#center but not standardized
+
+(response_sc <- scale(fire$'Response Time (s)', center = TRUE, scale = TRUE))#center and standardized 
+
+###Build our own normalizer, which is maybe how I would go if given the option. If you need to do multiple columns use lapply. See this referred to as a min-max scaler function.
+
+normalize <- function(x){
+ (x - min(x)) / (max(x) - min(x))
+}
+
+(response_n <- normalize(fire$'Response Time (s)'))
+# happens with the continuous variables 
+
+(column_index <- tibble(colnames(fire)))
+# create an index (tibble- another form of table)
+# important to have the same range 
+str(fire)
+table(CalendarYear)
+table(Problem)
+fire$Problem <- fct_collapse(fire$Problem,
+                           Auto="AUTO - Auto Fire", #New to Old
+                           Elec="ELEC - Electrical Fire",
+                           Trash="TRASH - Trash Fire",
+                           More=c("BOX -Structure Fire","BBQ - Unsafe Cooking", "BOXL- Structure Fire", "DUMP - Dumpster Fire", "GRASS - Small Grass Fire", "BRSHL - Brush Alarm / Light")
+                           )
+# collapse (from dplyr): creates new columns and collapses columns 
+# c = concatenate (creates a list into others )
+column_index
+table(type)
+
+#columns 4, 5, 6, 7, 8, and 10 need to be converted into factors
+fire[,c(4,5,6,7, 8, 10)] <- lapply(fire[,c(4,5,6,7, 8, 10)], as.factor)
+str(fire)
+
+#Now we can move forward in normalizing the numeric values, create a index based on numeric columns: 
+
+fire_num <- names(select_if(fire, is.numeric))
+fire[fire_num] <- as_tibble(lapply(fire[fire_num], normalize)) # 
+str(fire)
+
+fire <- fire %>% select(X1, CalendarYear:'Calltaker Agency (AFD or EMS)','Response Time (s)' )
+#fire <- fire[CalendarYear, 'Cancellation Status', 'Response Status', PriorityDescription, 'Response Time (s)', Problem, late_response]
+```
+
+### One-hot Encoding 
+```{r}
+fire_1h <- one_hot(as.data.table(fire),cols = "auto",sparsifyNAs = TRUE,naCols = TRUE,dropCols = TRUE,dropUnusedLevels = TRUE) 
+View(fire_1h)
+```
+
+
+### Baseline/Prevalance 
+```{r}
+describe(fire_1h$'Response Time (s)')
+(box <- boxplot(fire_1h$'Response Time (s)', horizontal = TRUE)) 
+box$stats # pulls out box plot statistics 
+fivenum(fire_1h$'Response Time (s)') # five number summary of any numeric list 
+?fivenum#thanks Tukey!
+
+#added this a predictor versus replacing the numeric version
+(fire_1h$response_f <- cut(fire_1h$'Response Time (s)',c(-1,.0765,1),labels = c(0,1)))
+#create new variable and add it to the data frame 
+# requires 3 cuts: where to begin, cut below the 4th number, and anything 
+# between 0.43 and 1 
+str(fire_1h)
+View(fire_1h)
+#So no let's check the prevalence 
+(prevalence <- table(fire_1h$response_f)[[2]]/length(fire_1h$response_f))
+table(fire_1h$response_f)
+
+```
+
+![](Boxplot.png)
+
+### Initial Model Building: Decision Tree Style  
+```{r}
+# Training|Evaluation, Tune|Evaluation, Test|Evaluation
+# Divide up our data into three parts, Training, Tuning, and Test
+fire_dt <- fire_1h[,-c("X1")]
+view(fire_dt)
+f_index_1 <- caret::createDataPartition(fire_dt$response_f,
+                                           times=1,
+                                           p = 0.70,
+                                           groups=1,
+                                           list=FALSE)
+View(f_index_1)
+dim(fire_dt)
+
+train <- fire_dt[f_index_1,]
+tune_and_test <- fire_dt[-f_index_1, ]
+
+#The we need to use the function again to create the tuning set 
+
+tune_and_test_index <- createDataPartition(tune_and_test$response_f,
+                                           p = .5,
+                                           list = FALSE,
+                                           times = 1)
+
+tune <- tune_and_test[tune_and_test_index, ]
+test <- tune_and_test[-tune_and_test_index, ]
+
+dim(train)
+dim(tune)
+dim(test)
+
+```
+
+#### Using Caret package to fit a C5.0 version of a decision tree
+Setting up the cross validation
+```{r}
+#Cross validation process 
+fitControl <- trainControl(method = "repeatedcv",
+                          number = 10,
+                          repeats = 5, 
+                          returnResamp="all",
+                          savePredictions = 'final') 
+```
+
+#### Training and Evaluation 
+
+```{r, include=FALSE}
+features <- train[,-"response_f"]
+target <- train[,"response_f"]
+
+View(target)
+
+str(features)
+
+set.seed(1984)
+fire_mdl <- train(x=features,
+                y=target$response_f,
+                trControl=fitControl,
+                method="C5.0",
+                verbose=TRUE)
+
+fire_mdl
+```
+
+Tune and Evaluation 
+```{r}
+fire_predict = predict(fire_mdl,tune,type= "raw")
+
+confusionMatrix(as.factor(fire_predict), 
+                as.factor(tune$response_f), 
+                dnn=c("Prediction", "Actual"), 
+                mode = "sens_spec")
+
+varImp(fire_mdl)
+
+plot(fire_mdl)
+
+
+grid <- expand.grid(.winnow = c(TRUE,FALSE), 
+                    .trials=c(20,30,40), 
+                    .model=c("tree","rules"))
+set.seed(1984)
+fire_mdl_tune <- train(x=features,
+                y=target$response_f,
+                tuneGrid=grid,
+                trControl=fitControl,
+                method="C5.0",
+                verbose=TRUE)
+
+fire_mdl_tune
+fire_mdl
+
+plot(fire_mdl_tune)
+
+# Want to evaluation again with the tune data using the new model 
+
+fire_predict_tune = predict(fire_mdl_tune,tune,type= "raw")
+
+fire_predict_tune
+
+confusionMatrix(as.factor(fire_predict_tune), 
+                as.factor(tune$response_f), 
+                dnn=c("Prediction", "Actual"), 
+                mode = "sens_spec")
+
+
+```
+Test 
+
+```{r}
+fire_predict_test = predict(fire_mdl_tune,test,type= "raw")
+
+confusionMatrix(as.factor(fire_predict_test), 
+                as.factor(tune$response_f), 
+                dnn=c("Prediction", "Actual"), 
+                mode = "sens_spec")
+
+```
+**Results**
+Did the model perform better or worse than the training version?
+- For this specific dataset, the initial model was said to have an accuracy of 1. However, it is less likely that this model has an accuracy rate of 100%, so I believe that there may have been an error between the tuning and testing phase. I was also unable to use the confusion matrix, so I am unable to tell if the new model performed better or worse than the training model. 
+
+### Dataset 2: UK Consumer Price Inflation Index 
+## Phase I
+[UK Medical School Rankings](https://data.world/aik/uk-medical-sch-rankings-2017)
+
+Working to developed a model than can predict UK Medical School quality rankings 
+
+Independent Business Metric - Assuming that higher ratings results in higher sales, can we predict which new cereals that enter the market over the next year will perform the best?   
+
+```
+
+## Phase II 
+
+### Scale/Center/Normalizing
+
+```{r}
+cereal <- read_csv("~/R 2021/DS-3001-Own/data/cereal.csv")
+View(cereal)
+attach(cereal)#is this a good idea? 
+describe(calories)
+?scale
+str(cereal)
+
+
+(sodium_c <- scale(cereal$sodium, center = TRUE, scale = FALSE))#center but not standardized
+
+(sodium_sc <- scale(cereal$sodium, center = TRUE, scale = TRUE))#center and standardized 
+#min-max scaling, placing the numbers between 0 and 1. 
+# divides by variance and becomes Z-score (centered and standardized from the mean)
+
+###Build our own normalizer, which is maybe how I would go if given the option. If you need to do multiple columns use lapply. See this referred to as a min-max scaler function.
+
+normalize <- function(x){
+ (x - min(x)) / (max(x) - min(x))
+}
+
+(sodium_n <- normalize(cereal$sodium))
+# happens with the continuous variables 
+# puts all on the same scale 
+# However, before we can apply this we need to make sure our data classes are correct. 
+
+(column_index <- tibble(colnames(cereal)))
+# create an index (tibble- another form of table)
+# important to have the same range 
+str(cereal)
+table(vitamins)
+#What about mfr and type?
+table(mfr)#we should collapse this factor, it has way too many categories G,K and everyone else. Usually don't want more than 5 categories  
+
+cereal$mfr <- fct_collapse(cereal$mfr,
+                           G="G", #New to Old
+                           K="K",
+                        other = c("A","N","P","Q","R")
+                        )
+# collapse (from dplyr): creates new columns and collapses columns 
+# c = concatenate (creates a list into others )
+column_index
+table(type)
+
+#Looks like columns 2,3,12 and 13 need to be converted to factors
+cereal[,c(2,3,12,13)] <- lapply(cereal[,c(2,3,12,13)], as.factor)
+
+str(cereal)
+
+#Now we can move forward in normalizing the numeric values, create a index based on numeric columns: 
+
+abc <- names(select_if(cereal, is.numeric))# select function to find the numeric variables 
+# select the names IF they are numeric variables and use it as an index 
+
+#Use lapply to normalize the numeric values 
+
+cereal[abc] <- as_tibble(lapply(cereal[abc], normalize)) # normalizing function
+
+str(cereal)
+
+```
+
+
+### One-hot Encoding 
+[ML Tools One-Hot Overview](https://www.rdocumentation.org/packages/mltools/versions/0.3.5/topics/one_hot)
+
+```{r}
+# Next let's one-hot encode those factor variables/character 
+
+?one_hot
+# works well with a data table and pass in serial as a data table 
+# auto identify the columns, drops the columns as needed, and identify the NAs
+cereal_1h <- one_hot(as.data.table(cereal),cols = "auto",sparsifyNAs = TRUE,naCols = TRUE,dropCols = TRUE,dropUnusedLevels = TRUE) 
+View(cereal_1h)
+```
+
+
+### Baseline/Prevalance 
+```{r}
+#Essentially the target to which we are trying to out perform with our model. 
+# PErcentage of number 1s in the target variable 
+describe(cereal_1h$rating)
+(box <- boxplot(cereal_1h$rating, horizontal = TRUE)) 
+box$stats # pulls out box plot statistics 
+fivenum(cereal$rating) # five number summary of any numeric list 
+?fivenum#thanks Tukey!
+
+#added this a predictor versus replacing the numeric version
+(cereal_1h$rating_f <- cut(cereal_1h$rating,c(-1,.43,1),labels = c(0,1)))
+#create new variable and add it to the data frame 
+# requires 3 cuts: where to begin, cut below the 4th number, and anything 
+# between 0.43 and 1 
+str(cereal_1h)
+View(cereal_1h)
+#So no let's check the prevalence 
+(prevalence <- table(cereal_1h$rating_f)[[2]]/length(cereal_1h$rating_f))
+table(cereal_1h$rating_f)
+
+```
+
+![](Boxplot.png)
+
+### Initial Model Building: Decision Tree Style  
+```{r}
+# Training|Evaluation, Tune|Evaluation, Test|Evaluation
+# Divide up our data into three parts, Training, Tuning, and Test
+
+#There is not a easy way to create 3 partitions using the createDataPartitions
+
+#so we are going to use it twice. Mostly because we want to stratify on the variable we are working to predict. What does that mean?  
+
+#clean up our dataset a bit by dropping the original ranking variable and the cereal name which we can't really use. 
+
+cereal_dt <- cereal_1h[,-c("name","rating")]
+view(cereal_dt)
+
+part_index_1 <- caret::createDataPartition(cereal_dt$rating_f,
+                                           times=1,
+                                           p = 0.70,
+                                           groups=1,
+                                           list=FALSE)
+View(part_index_1)
+dim(cereal_dt)
+
+train <- cereal_dt[part_index_1,]
+tune_and_test <- cereal_dt[-part_index_1, ]
+
+#The we need to use the function again to create the tuning set 
+
+tune_and_test_index <- createDataPartition(tune_and_test$rating_f,
+                                           p = .5,
+                                           list = FALSE,
+                                           times = 1)
+
+tune <- tune_and_test[tune_and_test_index, ]
+test <- tune_and_test[-tune_and_test_index, ]
+
+dim(train)
+dim(tune)
+dim(test)
+
+```
+
+
+#### Using Caret package to fit a C5.0 version of a decision tree
+Setting up the cross validation
+[Caret_Documentation](http://topepo.github.io/caret/train-models-by-tag.html#Tree_Based_Model)
+```{r}
+#Cross validation process 
+
+fitControl <- trainControl(method = "repeatedcv",
+                          number = 10,
+                          repeats = 5, 
+                          returnResamp="all",
+                          savePredictions = 'final') 
+
+# number - number of folds
+# repeats - number of times the CV is repeated, here it's 5 take the average of
+# those 5 repeats
+# returnResamp - essential verbose, save all of the sampling data
+
+# Choose the features and classes
+
+```
+
+#### Training and Evaluation 
+
+```{r}
+features <- train[,-"rating_f"]
+target <- train[,"rating_f"]
+
+View(target)
+
+str(features)
+
+set.seed(1984)
+cereal_mdl <- train(x=features,
+                y=target$rating_f,
+                trControl=fitControl,
+                method="C5.0",
+                verbose=TRUE)
+
+cereal_mdl
+```
+
+Tune and Evaluation 
+```{r}
+cereal_predict = predict(cereal_mdl,tune,type= "raw")
+
+confusionMatrix(as.factor(cereal_predict), 
+                as.factor(tune$rating_f), 
+                dnn=c("Prediction", "Actual"), 
+                mode = "sens_spec")
+
+varImp(cereal_mdl)
+
+plot(cereal_mdl)
+
+
+grid <- expand.grid(.winnow = c(TRUE,FALSE), 
+                    .trials=c(20,30,40), 
+                    .model=c("tree","rules"))
+set.seed(1984)
+cereal_mdl_tune <- train(x=features,
+                y=target$rating_f,
+                tuneGrid=grid,
+                trControl=fitControl,
+                method="C5.0",
+                verbose=TRUE)
+
+cereal_mdl_tune
+cereal_mdl
+
+plot(cereal_mdl_tune)
+
+# Want to evaluation again with the tune data using the new model 
+
+cereal_predict_tune = predict(cereal_mdl_tune,tune,type= "raw")
+
+cereal_predict_tune
+
+confusionMatrix(as.factor(cereal_predict_tune), 
+                as.factor(tune$rating_f), 
+                dnn=c("Prediction", "Actual"), 
+                mode = "sens_spec")
+
+
+```
+
+Test 
+
+```{r}
+cereal_predict_test = predict(cereal_mdl_tune,test,type= "raw")
+
+confusionMatrix(as.factor(cereal_predict_test), 
+                as.factor(tune$rating_f), 
+                dnn=c("Prediction", "Actual"), 
+                mode = "sens_spec")
+
+```
+
+
+### Dataset 3: Shootings in the US by City and State  
+## Phase I
+[Cereal_Data_Dictionary](https://www.kaggle.com/crawford/80-cereals)
+
+```{r}
+#Working to developed a model than can predict cereal quality rating. 
+
+#Assuming we are able to optimizing and make recommendations how does this translate into a business context? 
+
+# Inference versus Prediction 
+
+# Independent Business Metric - Assuming that higher ratings results in higher sales, can we predict which new cereals that enter the market over the next year will perform the best?   
+
+```
+
+## Phase II 
+
+### Scale/Center/Normalizing
+
+```{r}
+cereal <- read_csv("~/R 2021/DS-3001-Own/data/cereal.csv")
+View(cereal)
+attach(cereal)#is this a good idea? 
+describe(calories)
+?scale
+str(cereal)
+
+
+(sodium_c <- scale(cereal$sodium, center = TRUE, scale = FALSE))#center but not standardized
+
+(sodium_sc <- scale(cereal$sodium, center = TRUE, scale = TRUE))#center and standardized 
+#min-max scaling, placing the numbers between 0 and 1. 
+# divides by variance and becomes Z-score (centered and standardized from the mean)
+
+###Build our own normalizer, which is maybe how I would go if given the option. If you need to do multiple columns use lapply. See this referred to as a min-max scaler function.
+
+normalize <- function(x){
+ (x - min(x)) / (max(x) - min(x))
+}
+
+(sodium_n <- normalize(cereal$sodium))
+# happens with the continuous variables 
+# puts all on the same scale 
+# However, before we can apply this we need to make sure our data classes are correct. 
+
+(column_index <- tibble(colnames(cereal)))
+# create an index (tibble- another form of table)
+# important to have the same range 
+str(cereal)
+table(vitamins)
+#What about mfr and type?
+table(mfr)#we should collapse this factor, it has way too many categories G,K and everyone else. Usually don't want more than 5 categories  
+
+cereal$mfr <- fct_collapse(cereal$mfr,
+                           G="G", #New to Old
+                           K="K",
+                        other = c("A","N","P","Q","R")
+                        )
+# collapse (from dplyr): creates new columns and collapses columns 
+# c = concatenate (creates a list into others )
+column_index
+table(type)
+
+#Looks like columns 2,3,12 and 13 need to be converted to factors
+cereal[,c(2,3,12,13)] <- lapply(cereal[,c(2,3,12,13)], as.factor)
+
+str(cereal)
+
+#Now we can move forward in normalizing the numeric values, create a index based on numeric columns: 
+
+abc <- names(select_if(cereal, is.numeric))# select function to find the numeric variables 
+# select the names IF they are numeric variables and use it as an index 
+
+#Use lapply to normalize the numeric values 
+
+cereal[abc] <- as_tibble(lapply(cereal[abc], normalize)) # normalizing function
+
+str(cereal)
+
+```
+
+
+### One-hot Encoding 
+[ML Tools One-Hot Overview](https://www.rdocumentation.org/packages/mltools/versions/0.3.5/topics/one_hot)
+
+```{r}
+# Next let's one-hot encode those factor variables/character 
+
+?one_hot
+# works well with a data table and pass in serial as a data table 
+# auto identify the columns, drops the columns as needed, and identify the NAs
+cereal_1h <- one_hot(as.data.table(cereal),cols = "auto",sparsifyNAs = TRUE,naCols = TRUE,dropCols = TRUE,dropUnusedLevels = TRUE) 
+View(cereal_1h)
+```
+
+
+### Baseline/Prevalance 
+```{r}
+#Essentially the target to which we are trying to out perform with our model. 
+# PErcentage of number 1s in the target variable 
+describe(cereal_1h$rating)
+(box <- boxplot(cereal_1h$rating, horizontal = TRUE)) 
+box$stats # pulls out box plot statistics 
+fivenum(cereal$rating) # five number summary of any numeric list 
+?fivenum#thanks Tukey!
+
+#added this a predictor versus replacing the numeric version
+(cereal_1h$rating_f <- cut(cereal_1h$rating,c(-1,.43,1),labels = c(0,1)))
+#create new variable and add it to the data frame 
+# requires 3 cuts: where to begin, cut below the 4th number, and anything 
+# between 0.43 and 1 
+str(cereal_1h)
+View(cereal_1h)
+#So no let's check the prevalence 
+(prevalence <- table(cereal_1h$rating_f)[[2]]/length(cereal_1h$rating_f))
+table(cereal_1h$rating_f)
+
+```
+
+![](Boxplot.png)
+
+### Initial Model Building: Decision Tree Style  
+```{r}
+# Training|Evaluation, Tune|Evaluation, Test|Evaluation
+# Divide up our data into three parts, Training, Tuning, and Test
+
+#There is not a easy way to create 3 partitions using the createDataPartitions
+
+#so we are going to use it twice. Mostly because we want to stratify on the variable we are working to predict. What does that mean?  
+
+#clean up our dataset a bit by dropping the original ranking variable and the cereal name which we can't really use. 
+
+cereal_dt <- cereal_1h[,-c("name","rating")]
+view(cereal_dt)
+
+part_index_1 <- caret::createDataPartition(cereal_dt$rating_f,
+                                           times=1,
+                                           p = 0.70,
+                                           groups=1,
+                                           list=FALSE)
+View(part_index_1)
+dim(cereal_dt)
+
+train <- cereal_dt[part_index_1,]
+tune_and_test <- cereal_dt[-part_index_1, ]
+
+#The we need to use the function again to create the tuning set 
+
+tune_and_test_index <- createDataPartition(tune_and_test$rating_f,
+                                           p = .5,
+                                           list = FALSE,
+                                           times = 1)
+
+tune <- tune_and_test[tune_and_test_index, ]
+test <- tune_and_test[-tune_and_test_index, ]
+
+dim(train)
+dim(tune)
+dim(test)
+
+```
+
+
+#### Using Caret package to fit a C5.0 version of a decision tree
+Setting up the cross validation
+```{r}
+#Cross validation process 
+
+fitControl <- trainControl(method = "repeatedcv",
+                          number = 10,
+                          repeats = 5, 
+                          returnResamp="all",
+                          savePredictions = 'final') 
+
+# number - number of folds
+# repeats - number of times the CV is repeated, here it's 5 take the average of
+# those 5 repeats
+# returnResamp - essential verbose, save all of the sampling data
+
+# Choose the features and classes
+
+```
+
+#### Training and Evaluation 
+```{r}
+features <- train[,-"rating_f"]
+target <- train[,"rating_f"]
+
+View(target)
+
+str(features)
+
+set.seed(1984)
+cereal_mdl <- train(x=features,
+                y=target$rating_f,
+                trControl=fitControl,
+                method="C5.0",
+                verbose=TRUE)
+
+cereal_mdl
+```
+
+Tune and Evaluation 
+```{r}
+cereal_predict = predict(cereal_mdl,tune,type= "raw")
+
+confusionMatrix(as.factor(cereal_predict), 
+                as.factor(tune$rating_f), 
+                dnn=c("Prediction", "Actual"), 
+                mode = "sens_spec")
+
+varImp(cereal_mdl)
+
+plot(cereal_mdl)
+
+
+grid <- expand.grid(.winnow = c(TRUE,FALSE), 
+                    .trials=c(20,30,40), 
+                    .model=c("tree","rules"))
+set.seed(1984)
+cereal_mdl_tune <- train(x=features,
+                y=target$rating_f,
+                tuneGrid=grid,
+                trControl=fitControl,
+                method="C5.0",
+                verbose=TRUE)
+
+cereal_mdl_tune
+cereal_mdl
+
+plot(cereal_mdl_tune)
+
+# Want to evaluation again with the tune data using the new model 
+
+cereal_predict_tune = predict(cereal_mdl_tune,tune,type= "raw")
+
+cereal_predict_tune
+
+confusionMatrix(as.factor(cereal_predict_tune), 
+                as.factor(tune$rating_f), 
+                dnn=c("Prediction", "Actual"), 
+                mode = "sens_spec")
+
+
+```
+
+Test 
+
+```{r}
+cereal_predict_test = predict(cereal_mdl_tune,test,type= "raw")
+
+confusionMatrix(as.factor(cereal_predict_test), 
+                as.factor(tune$rating_f), 
+                dnn=c("Prediction", "Actual"), 
+                mode = "sens_spec")
+
+```
+
+
+
+  * Write a summary of your findings. What do you know now that you didn't when you started? What items are you concerned about 
+Overall, I feel like I understand more about how machine learning works within R because I have not been exposed to machine learning before. I am concerned about knowing when my data is prepared the right way and how to fix those problems in the future. 
+
+
