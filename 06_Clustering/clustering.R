@@ -75,8 +75,6 @@ head(kmeans_obj_Dem)
 # Tell R to read the cluster labels as factors so that ggplot2 
 # (the graphing package) can read them as category labels instead of 
 # continuous variables (numeric variables).
-
-kmeans_obj_Dem
 party_clusters_Dem = as.factor(kmeans_obj_Dem$cluster)
 #clustering object // clustering algorithm 
 #object oriented programming land and all the different components associed with K-means
@@ -170,7 +168,7 @@ house_votes_color_Dem = inner_join(house_votes_Dem, party_color3D_Dem)
 house_votes_color_Dem$clusters <- (party_clusters_Dem)
 # add clusters to it 
 
-View(house_votes_color_Dem)
+str(house_votes_color_Dem)
 
 house_votes_color_Dem$Last.Name <- gsub("[^[:alnum:]]", "", house_votes_color_Dem$Last.Name)
 # regular expression: way to accomodate for various 
@@ -237,6 +235,7 @@ denom_Dem3 = kmeans_obj_Dem$totss
 # the variance increased and might make more sense that 3 centers would fit this more 
 =======
 
+<<<<<<< HEAD
 #Might be a helpful look to compare to just a normal variance calculation:
 # s2=∑ni=1(xi− x¯)2/(n−1) = variance equation for var()
 
@@ -248,7 +247,6 @@ total.var.km <- (kmeans_obj_Dem$betweenss+kmeans_obj_Dem$tot.withinss)/(427-1)
 total.var
 total.var.km
 
->>>>>>> cfba5be00cce58d788f9bd4a42d393ed68a7a0f1
 
 #==================================================================================
 
@@ -374,7 +372,6 @@ str(tree_data)
 tree_data[,c(1,5)] <- lapply(tree_data[,c(1,5)], as.factor)
 # do we need to normalize? 
 
-str(tree_data)
 
 # Split 
 train_index <- createDataPartition(tree_data$party.labels,
