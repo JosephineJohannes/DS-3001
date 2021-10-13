@@ -39,17 +39,30 @@ View(house_votes_Rep)
 # brackets tells R that you are selecting columns.
 clust_data_Dem = house_votes_Dem[, c("aye", "nay", "other")]
 View(clust_data_Dem)
+# have three continuous variables and segment them off for use 
+# passing in a concatenated list with column names as indicators 
+# use the names for more intuitive 
 
 # Run an algorithm with 2 centers.
 # kmeans uses a different starting data point each time it runs.
 # Make the results reproducible with the set.seed() function.
-set.seed(1)
+set.seed(1) #randomly chooses a place to start (but set it to compare apples to apples)
 kmeans_obj_Dem = kmeans(clust_data_Dem, centers = 2, 
                         algorithm = "Lloyd")   #<- there are several ways of implementing k-means, see the help menu for a full list
+# not normalizing the data 
+# counting total number of votes and don't need to normalize because they're on the same range 
+# already on the same scale and will be better to scale if we don't normalize
+# Lloyd means Euclidean distance and we want two centers because of 2 parties and pass in cluaster data 
+# want to maximize the ratio between between_ss/total_ss
+# total sum square is the variance within and is accounted for by the distance between 
+#between the centroids and within is the average distance between a point and the centroid 
+# average difference of 
 
 # What did the kmeans function produce, 
 # what does the new variable kmeans_obj contain?
 kmeans_obj_Dem
+# is that the right number of centers? 
+# can do the elbow method or nbclust (runs different algorithmic approaches to model) 
 
 # View the results of each output of the kmeans function.
 head(kmeans_obj_Dem)
@@ -63,14 +76,22 @@ head(kmeans_obj_Dem)
 # (the graphing package) can read them as category labels instead of 
 # continuous variables (numeric variables).
 party_clusters_Dem = as.factor(kmeans_obj_Dem$cluster)
+#clustering object // clustering algorithm 
+#object oriented programming land and all the different components associed with K-means
+# we care the most about clusters 
+# just a list of how we classify each row in the dataset and turning tnto a factor 
 
 # What does the kmeans_obj look like?
 View(party_clusters_Dem)
+# why aren't they just clustered 2s? Keep in mind, that we created a 3 dimensional space 
 
 #==================================================================================
 
 #### Slide 29: Step 3: visualize plot ####
 
+# aesthetic value: pass in the variables that you want to use 
+# the shape is the clusters and passed in independently 
+# everything else after is just how we want it to appear 
 View(house_votes_Dem)
 View(party_clusters_Dem)
 
@@ -85,11 +106,18 @@ ggplot(house_votes_Dem, aes(x = aye,
                      labels = c("Cluster 1", "Cluster 2"),
                      values = c("1", "2")) +
   theme_light()
-
+# scale_shape_manual: changing the representation of the label
 #==================================================================================
 
 #### Slide 32: Step 5: validate results ####
 
+# don't understand if there are outliers and we are just writing a new variable and add it at the top of
+# ggplot 
+# represent 4 variables on one scale 
+# we say waht we want the colors to be and how to level them in the legend 
+# seems like voting patterns seem to be more 2 dimensional and aligned with republicans 
+# understand the models and test how good they are 
+# generate clusters and show how the clusters who up with 2 varying variable graphs.
 ggplot(house_votes_Dem, aes(x = aye, 
                             y = nay,
                             color = party.labels,  #<- tell R how to color 
@@ -115,6 +143,9 @@ ggsave("US House Votes for Dem Bills.png",
        width = 10, 
        height = 5.62, 
        units = "in")
+
+#optioinal for the lab 
+#innerjoin data set with original data set (interjoin: democrats are blue and repulcans are red) 
 #==================================================================================
 
 #### Slide 35: Clustering vs. visualizing ####
@@ -132,13 +163,17 @@ View(party_color3D_Dem)
 
 # Join the new data frame to our house_votes_Dem data set.
 house_votes_color_Dem = inner_join(house_votes_Dem, party_color3D_Dem)
+# inner join: finds the things that are repeats 
 
 house_votes_color_Dem$clusters <- (party_clusters_Dem)
+# add clusters to it 
 
 str(house_votes_color_Dem)
 
 house_votes_color_Dem$Last.Name <- gsub("[^[:alnum:]]", "", house_votes_color_Dem$Last.Name)
-
+# regular expression: way to accomodate for various 
+#alnum = alphanumeric and only in this string 
+# want to get rid of the characters and clean it up
 # Use plotly to do a 3d imaging 
 
 fig <- plot_ly(house_votes_color_Dem, 
@@ -152,19 +187,26 @@ fig <- plot_ly(house_votes_color_Dem,
                colors = c('#0C4B8E','#BF382A'), 
                text = ~paste('Representative:',Last.Name,
                              "Party:",party.labels))
-
+# x, y, z used to graph and cluster the points 
+# markers: triangles 
+# colors = hexadecimal code 
+# text: hover on point which shows the reps name and party 
+# use ~ for plot_ly function specifically 
 
 fig
 dev.off()
-
+# bounding box which sets the boundaries to default 
 #==================================================================================
 
 #### Slide 41: How good is the clustering? ####
+# pointing out individual variance measures 
 
 # Inter-cluster variance,
 # "betweenss" is the sum of the distances between points 
 # from different clusters.
 num_Dem = kmeans_obj_Dem$betweenss
+#telling us that the spread is mainly against 2 axis of yay and nay 
+# not so much votes on "other" 
 
 # Total variance, "totss" is the sum of the distances
 # between all the points in the data set.
@@ -179,7 +221,7 @@ denom_Dem = kmeans_obj_Dem$totss
 #### Slide 43: Elbow method: measure variance ####
 
 # Run an algorithm with 3 centers.
-set.seed(1)
+set.seed(1) 
 kmeans_obj_Dem = kmeans(clust_data_Dem, centers = 3, algorithm = "Lloyd")
 
 # Inter-cluster variance.
@@ -190,7 +232,7 @@ denom_Dem3 = kmeans_obj_Dem$totss
 
 # Variance accounted for by clusters.
 (var_exp_Dem3 = num_Dem3 / denom_Dem3)
-
+# the variance increased and might make more sense that 3 centers would fit this more 
 
 #==================================================================================
 
@@ -227,7 +269,14 @@ View(explained_var_Dem)
 # Data for ggplot2.
 elbow_data_Dem = data.frame(k = 1:10, explained_var_Dem)
 View(elbow_data_Dem)
-
+## tradeoff between complexity and accuracy 
+# how complex do I want to make this model in terms of diminishing returns 
+# what is the cutoff? you have to use your intuition 
+# good thing to do unsupervised learning up front and use intuition 
+# going beyond 3 in terms of relations
+# how complex do I want to make this? 
+# nominal spike -- jumps are fairly small past 3 // basically overfitting 
+# trying to identify outliers but it's not really much better 
 #==================================================================================
 
 #### Slide 47: Elbow method: plotting the graph ####
@@ -288,7 +337,9 @@ ggplot(freq_k_Dem,
 #===============================================================================
 
 # Now we are going to build a simple decision tree using the clusters as a feature
-
+# can be used in PCA 
+# added clusters as a feature and add party affiliation 
+# see if the clusters are preditctive of party affiliation 
 # reminder this is our model, using 3 clusters 
 set.seed(1)
 kmeans_obj_Dem = kmeans(clust_data_Dem, centers = 3, algorithm = "Lloyd")
@@ -330,19 +381,19 @@ dim(tune)
 dim(test)
 
 # Create our features and target for training of the model. 
-
+# create featureset 
 features <- as.data.frame(train[,-1])
-target <- train$party.labels
+target <- train$party.labels # add party label to target 
 
 
 set.seed(1980)
 party_dt <- train(x=features,
                     y=target,
-                    method="rpart")
-
+                    method="rpart") # rule based decision tree (less complex than c5.0)
+# simple approach to building a decision tree 
 # This is more or less a easy target but the clusters are very predictive. 
 party_dt
-varImp(party_dt)
+varImp(party_dt) # variable importance// very predictive of party outcomes 
 
 # Let's predict and see how we did. 
 dt_predict_1 = predict(party_dt,tune,type= "raw")
@@ -357,7 +408,7 @@ confusionMatrix(as.factor(dt_predict_1),
 
 tree_data_nc <- tree_data[,-5]
 str(tree_data_nc)
-
+# understanding balance between performance and complexity 
 
 train_index <- createDataPartition(tree_data$party.labels,
                                    p = .7,
