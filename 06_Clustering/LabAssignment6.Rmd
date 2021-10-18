@@ -10,7 +10,7 @@ output: html_document
 To find the best players, it was crucial that the variables taken into account consisted of the number of games that the players started in and the total number of points that a player had for the season. The number of games that a player has started is important because it shows how other teams thought highly of the player. The field goals percentage is also important because it has the overall number of field goals including 3-pointers and 2-pointers that the players correctly executed. The amount of total rebounds is also essential to know because it can be an important factor of determining possession of the ball in future games. The number of assists is crtiical as a variable because it shows how the player is the second-to-last player to touch the ball before a point is scored. Lastly, the number of points that a player had for the season is important because it shows how many times the player was able to execute a play and the throw perfectly. 
 
 ## Details of the Approach 
-This study will determine which professional players are a high-performance athlete with a low salary. To ensure that this determination is accurate, the data will first be normalized. Then, the variables will be selected and run through the k-means algorithm. The number of clusters will be determined by the Nbclust package. Then the data will be plotted to visualize the data and then the results will be validated. 
+This study will determine which professional players are a high-performance athlete with a low salary. To ensure that this determination is accurate, the data will first be normalized. Then, the variables will be selected and run through the k-means algorithm. The number of clusters will be determined by the Nbclust package. Then the data will be plotted to visualize the data and then the results will be  validated. 
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -29,14 +29,20 @@ nba_sal <- read_csv("nba_salaries_21.csv")
 normalize <- function(x){
  (x - min(x)) / (max(x) - min(x))
 }
+
+#I changed the excel file to have the column header Salary instead of '2020-21'
 ```
 
 ####Merging the Datasets 
 ```{r}
 # converting the data into data frame format 
 nba <- as.data.frame(nba)
-nba_sal <- as.data.frame(nba_sal)
+nba_sal <-as.data.frame(nba_sal)
 nba <- merge(nba, nba_sal)
+# to remove multiple players: nba <- distinct_at(nba, Player)
+nba <- nba[complete.cases(nba), ]
+nba <- as.data.frame(nba)
+
 # normalize the columns before they're added 
 nba$GS <- normalize(nba$GS)
 nba$FG <- scale(nba$FG, center= TRUE, scale = TRUE)
@@ -45,40 +51,12 @@ nba$AST <- normalize(nba$AST)
 nba$PTS <- normalize(nba$PTS)
 
 # Subsetting the data with the selected variables 
-clust_data = nba[, c("GS","FG", "TRB", "AST","PTS" )] #
+clust_data = nba[, c("Age", "G", "GS","MP", "FG","3P%","2P%","eFG%", "FT%", "TRB", "AST","STL", "BLK", "TOV", "PTS" )] #
+clust_data = normalize(clust_data)
 View(clust_data)
 View(nba)
 ```
 
-#### Run the K-means algorithm
-```{r}
-# Run an algorithm with 2 centers and make the results reproducible with set.seed 
-set.seed(1)
-kmeans_obj_nba = kmeans(clust_data, centers = 2, algorithm = "Lloyd")
-head(kmeans_obj_nba)
-```
-
-### Visualizing Various Plots and Correlations
-
-####Correlation between the Games Started and Points
-```{r}
-# This plot shows the correlation between the games started and the points each player has 
-sal_clusters = as.factor(kmeans_obj_nba$cluster)
-b <- ggplot(nba, aes(x = GS, y = PTS, shape = sal_clusters, color = "2020-21", text=Player))+geom_point(size = 6)+ggtitle("Games Started vs. Points for NBA Basketball players") +xlab("Number of Games Started")+ylab("Number of Points")+scale_shape_manual(name = "Cluster", labels = c("Cluster 1", "Cluster 2"), values = c("1", "2"))+ theme_light()
-ggplotly(b, tooltip="text")
-```
-####Correlation between the Games Started and Total Rebounds
-```{r}
-sal_clusters = as.factor(kmeans_obj_nba$cluster)
-c <-ggplot(nba, aes(x = GS, y = TRB, shape = sal_clusters, color = "2020-21", text=Player))+geom_point(size = 6) + ggtitle("Games Started vs. Total Rebounds NBA Basketball players") + xlab("Number of Games Started")+ylab("Number of Total Rebounds") + scale_shape_manual(name = "Cluster", labels = c("Cluster 1", "Cluster 2"), values = c("1", "2"))+ theme_light()
-ggplotly(c, tooltip="text")
-```
-####Correlation between the Games Started and Field Goals
-```{r}
-sal_clusters = as.factor(kmeans_obj_nba$cluster)
-a <-ggplot(nba, aes(x = GS, y = FG, shape = sal_clusters, color = "2020-21", text = Player))+geom_point(size = 6) + ggtitle("Games Started vs. Field Goals for NBA Basketball players") + xlab("Number of Games Started")+ylab("Number of Field Goals") + scale_shape_manual(name = "Cluster", labels = c("Cluster 1", "Cluster 2"), values = c("1", "2"))+ theme_light()
-ggplotly(a, tooltip="text")
-```
 #### Finding the ideal number of clusters
 ```{r}
 # using the NbClust algorithm to find the ideal number of clusters 
@@ -90,7 +68,49 @@ freq_k_nba = data.frame(freq_k_nba)
 #Plot the recommended number of clusters as a histogram 
 ggplot(freq_k_nba, aes(x = freq_k_nba)) + geom_bar()+ scale_x_continuous(breaks = seq(0, 15, by = 1)) + scale_y_continuous(breaks = seq(0, 12, by = 1)) + labs(x = "Number of Clusters", y = "Number of Votes", title = "Cluster Analysis")
 ```
-From the cluster analysis, the recommended number of clusters is 2. 
+From the cluster analysis, the recommended number of clusters is 3. 
 
+#### Run the K-means algorithm
+```{r}
+# Run an algorithm with  centers and make the results reproducible with set.seed 
+set.seed(1)
+kmeans_obj_nba = kmeans(clust_data, centers = 3, algorithm = "Lloyd")
+head(kmeans_obj_nba)
+
+clusters = as.factor(kmeans_obj_nba$cluster)
+clusters = as.data.frame(clusters)
+```
+
+### Visualizing Various Plots and Correlations
+
+####Correlation between the Salary and Points
+
+```{r}
+# This plot shows the correlation between the games started and the points each player has 
+sal_clusters = as.factor(kmeans_obj_nba$cluster)
+b <-ggplot(nba, aes(x = Salary, y = PTS, color = sal_clusters, text=Player))+geom_point(size = 6)+ggtitle("Salary vs. Points for NBA Basketball players") +xlab("Salary")+ylab("Number of Points")+scale_shape_manual(name = "Cluster", labels = c("Cluster 1", "Cluster 2", "Cluster 3"), values = c("1", "2", "3"))+ theme_light()
+ggplotly(b, tooltip="text")
+```
+
+####Correlation between Salary and Games Started 
+```{r}
+sal_clusters = as.factor(kmeans_obj_nba$cluster)
+c <-ggplot(nba, aes(x = Salary, y = GS, color = sal_clusters, text=Player))+geom_point(size = 6) + ggtitle("Salary vs. Games started by NBA Basketball players") + xlab("Salary")+ylab("Number of Games Started") + scale_shape_manual(name = "Cluster", labels = c("Cluster 1", "Cluster 2", "Cluster 3"), values = c("1", "2","3"))+ theme_light()
+ggplotly(c, tooltip="text")
+```
+
+####Correlation between the Salary and Field Goals
+```{r}
+sal_clusters = as.factor(kmeans_obj_nba$cluster)
+a <-ggplot(nba, aes(x = Salary, y = FG, color = sal_clusters, text = Player))+geom_point(size = 6) + ggtitle("Salary vs. Field Goals for NBA Basketball players") + xlab("Salary")+ylab("Number of Field Goals") + scale_shape_manual(name = "Cluster", labels = c("Cluster 1", "Cluster 2", "Cluster 3"), values = c("1", "2", "3"))+ theme_light()
+ggplotly(a, tooltip="text")
+```
+
+####Correlation between the Salary and Number of Assists
+```{r}
+sal_clusters = as.factor(kmeans_obj_nba$cluster)
+a <-ggplot(nba, aes(x = Salary, y = AST, color = sal_clusters, text = Player))+geom_point(size = 6) + ggtitle("Salary vs. Assists for NBA Basketball players") + xlab("Salary")+ylab("Number of Assists") + scale_shape_manual(name = "Cluster", labels = c("Cluster 1", "Cluster 2", "Cluster 3"), values = c("1", "2", "3"))+ theme_light()
+ggplotly(a, tooltip="text")
+```
 ### Final Recommendations 
-I would recommend Michael Porter Jr., Norman Powell, and PJ Washington. I recommend these three players because they have done well in terms of how many field goals they've completed during the last season as well as the number of points that they accumulated. They are also not paid as well as the other athletes and seem to be high-performing. 
+I would recommend Trae Young, Luka Don, Donovan Mitchell, and Zion Williamson. I recommend these three players because they have done well in terms of how many field goals they've completed during the last season as well as the number of points that they accumulated. They are also not paid as well as the other athletes and seem to be high-performing. These players seem to have a high number of points compared to others and are on the lower end of the salary spectrum.
