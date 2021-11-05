@@ -32,6 +32,8 @@ df1 <- df1 %>% mutate(corc = vec3)
 # make scatter plot comparing new features
 ggplot(df1,aes(x=cora,y=corc))+geom_point(aes(colour = main_colors))
 
+# after looking at the plot, it seemed like there were a few clusters were the points were distributed 
+# I thought it would be interesting to look at the effect of number of plays on the other variables
 
 ## The Actual Lab
 # something that I learned in the lab was the difference in using k-means versus knn other than 
