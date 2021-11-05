@@ -295,6 +295,29 @@ The F1 score was used to balance Precision and Recall. Recall is important when 
 
 ### Part 6. Results and Conclusion
 
+Throughout your early career as a data scientist you've built article summaries, 
+explored NBA talent, minded text on climate change news but you've suddenly realized you need to enhance your ability to assess the models you are building. 
+As the most important part about understanding any machine learning model 
+(or any model, really) is understanding it's weakness and or vulnerabilities. 
+
+In doing so you've decided to practice on a dataset that are of interest to you, and use a approach to which you are familiar, kNN. 
+
+Part 1. Select either as a lab group or as individuals a dataset that is of interest to you/group. Define a question that can be answered using classification, specifically kNN, for the dataset. 
+
+Part 2. In consideration of all the metrics we discussed what are a few key metrics that should be tracked given the question you are working to solve? 
+
+Part 3. Build a kNN model and evaluate the model using the metrics discussed in class (Accuracy, TPR, FPR, F1, Kappa, LogLoss and ROC/AUC). Make sure to calculate the baserate or prevalence to provide a reference for some of these measures. Even though you are generating many of the metrics we discussed, summarize the output of the key metrics you established in part 2. 
+
+Part 4.  Consider where miss-classification errors are occurring, is there a pattern? If so discuss this pattern and why you think this is the case. 
+
+Part 5. Based on your exploration in Part 3, change the threshold using the function provided in the in-class example, what differences do you see in the evaluation metrics? Speak specifically to the metrics that are best suited to address the question you are trying to answer. 
+
+Part 6. Summarize your findings focusing speaking through your question, what does the evaluation outputs mean when answering the question you've proposed?
+
+Recommendations for improvement might include gathering more data, adjusting the threshold, adding new features, changing your questions or maybe that it's working fine at the current level and nothing should be done. 
+
+Regardless of the outcome, what should we be aware of when your model is deployed (online versus offline)? 
+
 Taking into account the evaluation metrics and the predictive capabilities of the model, he kNN model is a good model for classifying the diagnosis of a tumor; more specifically if it is benign or malignant. The evaluation outputs were as stated above. The most important evaluation metrics to solving our question were the false negative rate, balanced accuracy, and the F1 score. The false negative rate decreased with a lower threshold and this was important as it is necessary that the model does not misdiagnose patients with a malignant tumor and predict that they have a benign tumor. The balanced accuracy and F1 score are necessary because the data set is imbalanced and provides a more accurate evaluation of the model. The F1 score was high which meant that the precision to recall ratio. Recall is important when there is a high cost associated with a false negative which is true in this case, because a patient could have a malignant tumor that is diagnosed as benign. However, because the F1 score is high, we can have confidence that the model is better at predicting the false negatives and overall the true rates. 
 
 Some recommendations for improvement include gathering more data which might balance out the dataset, but could lead to some bias. Other than that, the model works well based on the F1 score, balanced accuracy, and the false negative rate.

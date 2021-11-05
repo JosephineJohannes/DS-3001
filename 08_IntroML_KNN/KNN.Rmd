@@ -9,6 +9,7 @@ editor_options:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
 ```
 
 ```{r}
@@ -16,8 +17,18 @@ library(caret)
 library(tidyverse)
 library(class)
 library(plotly)
+>>>>>>> c024dccc13659741a8579fe16790297b39dedde9
 ```
 
+
+bank_data = read_csv("data/bank.csv")
+
+# Check the structure and view the data.
+table(bank_data$`signed up`)
+
+#check for missing data
+
+bank_data <- bank_data[complete.cases(bank_data),]
 
 ```{r}
 bank_data = read_csv("data/bank.csv")
@@ -28,8 +39,11 @@ bank_data <- bank_data[complete.cases(bank_data),]
 #Scale the features we will be using for classification 
 bank_data[, c("age","duration","balance")] <- lapply(bank_data[, c("age","duration","balance")],function(x) scale(x))
 bank_data$`signed up` <- as.factor(bank_data$`signed up`)
+
+
 str(bank_data)
 ```
+
 
 
 ```{r}
@@ -40,6 +54,12 @@ table(bank_data$`signed up`)[2] / sum(table(bank_data$`signed up`))
 # This means that at random, we have an 11.6% chance of correctly picking
 # out a subscribed individual. Let's see if kNN can do any better.
 # create data partition for tuning and testing 
+table(bank_data$`signed up`)[2] / sum(table(bank_data$`signed up`))table(bank_data$`signed up`)
+
+# This means that at random, we have an 11.6% chance of correctly picking
+# out a subscribed individual. Let's see if kNN can do any better.
+
+
 part_index_1 <- createDataPartition(bank_data$`signed up`,
                                            times=1,
                                            p = 0.70,
@@ -50,15 +70,18 @@ train <- bank_data[part_index_1,]
 tune_and_test <- bank_data[-part_index_1, ]
 #The we need to use the function again to create the tuning set 
 # you should use set.seed() if you want to use the data partition again 
+
 tune_and_test_index <- createDataPartition(tune_and_test$`signed up`,
                                            p = .5,
                                            list = FALSE,
                                            times = 1)
+
 tune <- tune_and_test[tune_and_test_index, ]
 test <- tune_and_test[-tune_and_test_index, ]
 dim(train)
 dim(tune)
 dim(test)
+
 ```
 ## Train the classifier 
 
@@ -75,10 +98,27 @@ bank_3NN <-  knn(train = train[, c("age", "balance", "duration")],#<- training s
                use.all = TRUE, # use all the data
                prob = TRUE) #<- control ties between class assignments If true, all distances equal to the kth largest are included
 #when prob = TRUE, we want all of the probability
+
+
+
+# k-Nearest Neighbor is a randomized algorithm, so make sure to
+# use set.seed() to make your results repeatable.
+set.seed(1982)
+bank_3NN <-  knn(train = train[, c("age", "balance", "duration")],#<- training set cases
+               test = tune[, c("age", "balance", "duration")],    #<- test set cases
+               cl = train$`signed up`,#<- category for true classification
+               k = 10,#<- number of neighbors considered
+               use.all = TRUE,
+               prob = TRUE) #<- control ties between class assignments If true, all distances equal to the kth largest are included
+
+
+
 # View the output.
 str(bank_3NN)
 table(bank_3NN)
 length(bank_3NN)
+
+
 ```
 
 ## Compare to the original data
@@ -102,6 +142,60 @@ kNN_acc
 confusionMatrix(as.factor(bank_3NN), as.factor(tune$`signed up`), positive = "1", dnn=c("Prediction", "Actual"), mode = "sens_spec")
 #So our ability to "predict" sign up customers has more than doubled to 26% so that's  good but still pretty bad overall. This means that out of 10 sign ups, we really only classify 3 correctly. This is fairly typical when we have a unbalanced dataset. Which is why in this case we would want to tune this model on TPR (Sensitivity), to get it has high as possible while sacrificing Specificity or Precision.  Similar to a medical diagnosis example, where we would rather produce false positives as compared to false negatives, predict more of those with cancer that don't have it as compared to missing anyone that actually has cancer.      
 #Reference for confusion matrix: https://www.rdocumentation.org/packages/caret/versions/6.0-86/topics/confusionMatrix 
+```
+
+
+# An 87.0% accuracy rate is pretty good but keep in mind the baserate is roughly 89/11, so we have more or less a 90% chance of guessing right if we don't know anything about the customer, but the negative outcomes we don't really care about, this models value is being able to id sign ups when they are actually sign ups. This requires us to know are true positive rate, or Sensitivity or Recall. (Ya, that's annoying.) So let's dig a little deeper.    
+
+confusionMatrix(as.factor(bank_3NN), as.factor(tune$`signed up`), positive = "1", dnn=c("Prediction", "Actual"), mode = "sens_spec")
+
+#So our ability to "predict" sign up customers has more than doubled to 26% so that's  good but still pretty bad overall. This means that out of 10 sign ups, we really only classify 3 correctly. This is fairly typical when we have a unbalanced dataset. Which is why in this case we would want to tune this model on TPR (Sensitivity), to get it has high as possible while sacrificing Specificity or Precision.  Similar to a medical diagnosis example, where we would rather produce false positives as compared to false negatives, predict more of those with cancer that don't have it as compared to missing anyone that actually has cancer.      
+
+#Reference for confusion matrix: https://www.rdocumentation.org/packages/caret/versions/6.0-86/topics/confusionMatrix 
+
+
+```
+
+```{r}
+bank_prob_1 <- tibble(attr(bank_3NN, "prob"))
+
+bank_prob_1
+
+final_model <- tibble(k_prob=bank_prob_1$`attr(bank_3NN, "prob")`,pred=bank_3NN,target=tune$`signed up`)
+
+#Need to convert this to the likelihood to be in the poss class.
+final_model$pos_prec <- ifelse(final_model$pred == 0, 1-final_model$k_prob, final_model$k_prob)
+View(final_model)
+
+confusionMatrix(final_model$pred, final_model$target, positive = "1", dnn=c("Prediction", "Actual"), mode = "sens_spec")
+
+adjust_thres <- function(x, y, z) {
+  #x=pred_probablities, y=threshold, z=test_outcome
+  thres <- as.factor(ifelse(x > y, 1,0))
+  confusionMatrix(thres, z, positive = "1", dnn=c("Prediction", "Actual"), mode = "everything")
+}
+
+adjust_thres(final_model$pos_prec,.35,final_model$target)
+
+library(ROCR)
+pred <- prediction(final_model$pos_prec,final_model$target)
+View(pred)
+
+knn_perf <- performance(pred,"tpr","fpr")
+
+plot(knn_perf, colorize=TRUE)
+abline(a=0, b= 1)
+
+knn_perf_AUC <- performance(pred,"auc")
+
+print(knn_perf_AUC@y.values)
+
+library(MLmetrics)
+LogLoss(as.numeric(final_model$pos_prec), as.numeric(final_model$target))
+
+F1_Score(y_pred = final_model$pred, y_true = final_model$target, positive = "1")
+
+
 ```
 
 
@@ -146,6 +240,7 @@ head(knn_different_k)
 knn_different_k = data.frame(k = knn_different_k[1,],
                              accuracy = knn_different_k[2,])
 # Plot accuracy vs. k.
+
 ggplot(knn_different_k,
        aes(x = k, y = accuracy)) +
   geom_line(color = "orange", size = 1.5) +
@@ -159,6 +254,7 @@ ggplot(knn_different_k,
 ## Real quick - let's also look at a multi-class example using the iris dataset
 
 ```{r}
+
 #For this example we are going to use the IRIS dataset in R
 str(iris)
 #first we want to scale the data so KNN will operate correctly
@@ -171,15 +267,27 @@ iris_sample <- sample(2, nrow(scalediris), replace=TRUE, prob=c(0.67, 0.33))
 View(iris)
 View(iris_training)
 View(iris_sample)
+
 iris_training <- scalediris[iris_sample==1, 1:4]
 iris_test <- scalediris[iris_sample==2, 1:4]
 #Now we need to create our 'Y' variables or labels need to input into the KNN function
 iris.trainLabels <- iris[iris_sample==1, 5]
 iris.testLabels <- iris[iris_sample==2, 5]
 #So now we will deploy our model 
+
 iris_pred <- knn(train = iris_training, test = iris_test, cl=iris.trainLabels, k=3, prob = TRUE)#probabilities are a percentage of points per class for each point, (kNN equals 4 for example and 3 of 4 are blue then 75% chance of being blue)
 View(iris_pred)
 View(attr(iris_pred, "prob"))
+=======
+
+iris_pred <- knn(train = iris_training, test = iris_test, cl=iris.trainLabels, k=3, prob = TRUE)#probabilities are a percentage of points per class for each point, (kNN equals 4 for example and 3 of 4 are blue then 75% chance of being blue)
+
+str(iris_pred)
+
+xxxxx <- as.tibble(attr(iris_pred, "prob"))
+View(xxxxx)
+
+
 library(gmodels)
 IRISPREDCross <- CrossTable(iris.testLabels, iris_pred, prop.chisq = FALSE)
 #Looks like we got all but three correct, not bad
@@ -187,6 +295,7 @@ IRISPREDCross <- CrossTable(iris.testLabels, iris_pred, prop.chisq = FALSE)
 ```
 
 ## Example with Caret using 10-k cross-validation 
+=======
 
 ```{r}
 set.seed(1981)
@@ -203,6 +312,10 @@ iris_knn <- train(Species~.,
                   trControl= trctrl,#cv method above, will select the optimal K
                   preProcess="scale") #already did this but helpful reference
 iris_knn#take a look
+=======
+
+iris_knn
+
 plot(iris_knn)#can also plot
 varImp(iris_knn)#gives us variable importance on a range of 0 to 100
 iris_pred <- predict(iris_knn, iris_test_car)
@@ -235,6 +348,13 @@ str(bank_5NN)
 table(bank_5NN)
 length(bank_5NN)
 ```
+=======
+table(iris_test_car$Species)#looks like we mis-classified 3 virginica as versicolor
+
+
+xxxxx <- as.tibble(attr(iris_pred, "prob"))
+
+View(xxxxx)
 
 ```{r}
 # How does the kNN classification compare to the true class?
@@ -287,6 +407,15 @@ k4NN_acc = sum(k4NN_res[row(k4NN_res) == col(k4NN_res)]) / sum(k4NN_res)
 k4NN_acc
    # the accuracy is 86.965% which is lower than 87%
 confusionMatrix(as.factor(bank_4NN), as.factor(tune$`signed up`), positive = "1", dnn=c("Prediction", "Actual"), mode = "sens_spec")
+=======
+# In Class Exercise 
+```{r}
+
+# Using the bank dataset build a kNN model with your groups recommended k value and compare to the example from above, use the tuning data. Then use the test data and see how the model preforms. 
+
+# Also think about this questions, given what you know about kNN do you really need to do a robust training effort? 
+
+
 ```
 
 FUNCTION 
