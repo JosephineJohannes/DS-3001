@@ -4,33 +4,297 @@ author: "Brian Wright"
 date: "10/25/2020"
 output: html_document
 ---
+## Metrics Evaluation Lab
 
+Throughout your early career as a Data Scientist you've built article summaries, explored NBA talent, and analyzed text on climate change news but you've suddenly realized you need to enhance your ability to assess the models you are building. As the most important part about understanding any machine learning model 
+(or any model, really) is understanding it's weakness and/or vulnerabilities. 
+
+In doing so you've decided to practice on datasets that are of interest to you, and use a approach to which you are (becoming) familiar, kNN. 
+
+### Part 1: Defining a Question
+We will be using a Breast Cancer dataset ufrom Wisconcsin taken from [Kaggle](https://www.kaggle.com/uciml/breast-cancer-wisconsin-data). 
+**Question**: Given the characteristics of a tumor, can we predict whether the patient's tumor is malignant or not? 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-Throughout your early career as a data scientist you've built complex visualizations, explored NBA talent, minded text on Data Science news and gained a better understanding how to create commercials with great success but you've suddenly realized you need to enhance your ability to assess the models you are building. As the most important part about understanding any machine learning model (any model) is understanding it's weakness or better said it's vulnerabilities. 
+####Load Essential Libraries 
+```{r, include=FALSE}
+library(tidyverse)
+library(psych)
+library(mltools)
+library(data.table)
+library(caret)
+library(RColorBrewer)
+library(ROCR)
+#install.packages("MLmetrics")
+library(MLmetrics)
+library(gmodels)
+library(class)
+library(plotly)
+```
 
-In doing so you've decided to practice on datasets that are of interest to you, but use a approach to which you are very familiar, kNN. 
 
-Part 1. Select either as a lab or individual two datasets that you have not used before but that are of interest to you/group. Define questions that can be answered using classification, specifically kNN, for each dataset. Build kNN models and then use the evaluation metrics we discussed in class (Accuracy, TPR, FPR, F1, Kappa, LogLoss and ROC/AUC) to assess the quality of the models. Make sure to calculate the base rate or prevalence to provide a reference for some of these measures.
+####Loading the Dataset 
+```{r}
+b_cancer <- read_csv("breast_cancer.csv")
+table(is.na(b_cancer)) #checks if there are NAs present
 
-Part 2. Take a closer look at where miss-classification errors are occurring, is there a pattern? If so discuss this pattern and why you think this is the case. 
+#all of the NAs are present in one column so take that column out 
+b_cancer <- b_cancer[ ,2:32]
+b_cancer <- b_cancer[complete.cases(b_cancer), ]
+table(is.na(b_cancer))
 
-Part 3. Based on your exploration in Part 2, change the threshold using the function provided, what differences do you see in the evaluation metrics? Speak specifically to the metrics you think are best suited to address the 
-questions you are trying to answer. 
+# there are 31 predictor variables 
+b_cancer$diagnosis <- recode(b_cancer$diagnosis, 'B'=0, 'M'=1)
+str(b_cancer)
 
-Part 4. Are there features that you can engineer or hyperparameters that can be tuned that improve the evaluation metrics. Which of these two approaches 
-seems to work better for your dataset?  
+#reduce the amount of predictor variables to 11
+b_cancer_rev <- (b_cancer[ ,1:31])
+```
 
-Part 5. Summarize your findings to include recommendations on how you might 
-change each of the two kNN models based on the results. Speak through your question, what does the evaluation outputs mean when answering the question 
-you've proposed. 
 
-Recommendations for improvement might include gathering more data, adjusting the threshold, adding new features, changing your questions or maybe 
-that it's working fine at the current level and nothing should be done. 
+### Part 2: Deciding which metrics to use
+The three key metrics that should be tracked given our question are the False Negative Rate, Balanced Accuracy, and the F1 score. The False Negative rate is important to calculate because we want the number of people who have a malignant tumor to be diagnosed with a malignant tumor rather than a benign tumor. We are aiming for a low false negative rate so that people will get the treatment that they need for the tumor.  Another metric would be to calculate balanced accuracy. Balanced accuracy is better to use with imbalanced data, which is what our data set looks like and is important to validate the accuracy of the entire model. The F1 score is also an important measure because it will predict the model's ability to reduce the amount of false positives or false negatives as a false negative could indicate that a patient with a malignant tumor is diagnosed to not have a malignant tumor 
 
-Regardless of the outcome, what should we be aware of when these models are deployed (online versus offline)? 
 
-Submit a .Rmd file along with the data used or access to the data sources to the Collab site. You can work together with your groups but submit individually. 
+### Part 3: Building a kNN model 
 
+#### Building the kNN model 
+```{r}
+b_cancer_rev$diagnosis <- as.factor(b_cancer_rev$diagnosis)
+b_cancer_pred <- b_cancer_rev
+scaled_cancer <- as.data.frame(scale(b_cancer_pred[2:31], center = TRUE, scale = TRUE))
+set.seed(1000)
+scaled_cancer['diagnosis'] <- b_cancer_pred[ ,1]
+cancer_sample <- sample(2, nrow(scaled_cancer), replace=TRUE, prob=c(0.67, 0.33))
+
+
+cancer_training <- scaled_cancer[cancer_sample==1, 1:30]
+cancer_test <- scaled_cancer[cancer_sample==2, 1:30]
+
+cancer.trainLabels <- scaled_cancer[cancer_sample==1, 31]
+cancer.testLabels <- scaled_cancer[cancer_sample==2, 31]
+
+cancer_pred <- knn(train=cancer_training, test = cancer_test, cl = cancer.trainLabels, k=5, prob=TRUE)
+
+View(cancer_pred)
+View(attr(cancer_pred, "prob"))
+
+
+CANCERCross <- CrossTable(cancer.testLabels, cancer_pred, prop.chisq=FALSE)
+# the cross table shows the confusion matrix 
+
+```
+
+#### Using karet with 10-k Cross-Validation
+```{r}
+set.seed(1981)
+scaled_cancer$diagnosis <- b_cancer_rev$diagnosis 
+cancer_training_car <- scaled_cancer[cancer_sample==1, 1:31]
+cancer_test_car <- scaled_cancer[cancer_sample==2, 1:31]
+
+trctrl <- trainControl(method = "repeatedcv", 
+                       number = 10, 
+                       repeats = 3)
+cancer_knn <- train(diagnosis~., data = cancer_training_car, 
+                    method="knn", 
+                    tuneLength=10, 
+                    trControl = trctrl, 
+                    preProcess="scale")
+cancer_knn
+plot(cancer_knn)
+varImp(cancer_knn)
+```
+
+
+The optimal model used k=5 and we had believed that a higher k would be able to capture a lower false negative rate. The kappa value for k=5 was predicted to be 0.9216952. 
+
+####Evaluation Metrics
+
+**ACCURACY**: The overall accuracy of the model was found to be 98% and the Balanced accuracy was also found to be 0.976. The accuracy of the model is a good factor to determine if your model is good or not, but should not be the core of evaluating the model. The balanced accuracy is also important because it takes into account the imbalanced data, and averages sensitivity and specificity. 
+
+**True Positive Rate (Sensitivity)**: The true positive rate, also known as sensitivity, was found to be 0.9921, which means that 99% of the malignant tumors were correctly labeled as a malignant tumor. This is good for the model and for diagnosis in general because it would mean that the probability that a person does not have cancer will likely not be diagnosed with having cancer when using this model. 
+
+**False Positive Rate(1-Specificity)**: The false positive rate is 0.0405. 0.0405 stands for the 4% of the benign tumors that were predicted to be malignant tumors from the model.
+
+**KAPPA**: The Kappa value was calculated to be 0.95, which increases my belief that the model is predicting the classes well on an imbalanced dataset. 
+
+**PREVALENCE**: The prevalence was calculated to be 0.63, meaning that 63% of the dataset was found to be malignant. 
+
+
+#### Specific Evaluation Metrics
+```{r}
+#First we need to do some predictions using the test data 
+cancer_eval <-(predict(cancer_knn,newdata = cancer_test_car))#generates 1s and 0s
+cancer_eval_prob <- predict(cancer_knn,newdata = cancer_test_car, type = "prob")#this gives us the predicted prob, we will need these later for the fairness evaluation
+View(cancer_eval_prob)
+
+View(cancer_test_car$diagnosis)
+table(cancer_eval, cancer_test_car$diagnosis)
+
+confusionMatrix(cancer_eval, cancer_test_car$diagnosis, positive="1", dnn=c("Prediction", "Actual"), mode="sens_spec")
+
+#use the adjust_thresh function to explore various threshold levels 
+adjust_thres <- function(x, y, z) {
+  #x=pred_probablities, y=threshold, z=test_outcome
+  thres <- as.factor(ifelse(x > y, 1,0))
+  confusionMatrix(thres, z, positive = "1", dnn=c("Prediction", "Actual"), mode = "everything")
+}
+
+#0.8 from class example
+adjust_thres(cancer_eval_prob$'1', 0.8, cancer_test_car$diagnosis)
+
+# the algorithm predicted that one patient who has no cancer would be diagnosed with cancer // decrease the true positive rate // increased sensitivity
+cancer_eval_prob$test <- cancer_test_car$diagnosis 
+
+(error = mean(cancer_eval != cancer_test_car$diagnosis))
+# the overall error rate is 0.0199 
+
+final_model$pos_prec <- ifelse(final_model$pred == 0, 1-final_model$k_prob, final_model$k_prob)
+confusionMatrix(final_model$pred, final_model$target, positive"1" ...) 
+
+adjust_thresh(final_model$pos_prec, .35, final_model$target)
+```
+
+**Important Metric Values**
+
+Accuracy: 94.03%
+
+TPR: 0.9595 
+
+FPR: 0.0079
+
+Kappa: 0.8672
+
+Balanced Accuracy: 0.9189
+
+Prevalence: 0.3682
+
+The error rate was calculated and the error rate was found to be 0.0199, verifying that the model is valid. 
+```{r}
+FNR <- 3/(3+71) 
+FNR
+pr <- 126/(126+1)
+pr
+```
+
+False Negative Rate: 0.04
+
+#### ROC/AUC Plot
+```{r}
+cancer_eval <- data.frame(pred_class=cancer_eval, pred_prob=cancer_eval_prob$'1',target=as.numeric(cancer_test_car$diagnosis))
+str(cancer_eval)
+pred <- prediction(cancer_eval$pred_prob, cancer_eval$target)
+
+knn_perf <- performance(pred, "tpr", "fpr")
+plot(knn_perf, colorize=TRUE)
+abline(a=0, b=1)
+knn_perf_AUC <- performance(pred, "auc")
+
+print(knn_perf_AUC@y.values)
+```
+
+
+The Area Under the Curve is a good indicator of the performance of the model. The AUC for the model is 0.9896255 which is in the excellent range. This means that the ratio of true positive rate to the false positive rate is high. The higher the AUC, the better the performance of the model is at distinguishing between the benign and malignant tumors. From the graph, we can see that the classifier will be able to detect more True positives and True negatives than False negatives and False positives. 
+
+
+#### LogLoss
+```{r}
+LogLoss(as.numeric(cancer_eval$pred_prob), as.numeric(cancer_test_car$diagnosis))
+
+```
+LogLoss: 8.714184
+
+#### F1 Score
+```{r}
+F1_Score(as.numeric(cancer_eval$pred_class), as.numeric(cancer_test_car$diagnosis))
+```
+The F1 Score was calculated to be 0.984. The F1 score is used to balance Precision and Recall. Recall is important when there is a high cost associated with a false negative which is true in this case, because a patient could have a malignant tumor that is diagnosed as benign. In this case, a high F1 score means that there is a good ratio between Precision and Recall.
+
+### Part 4. Miss-Classification Errors 
+
+Miss-classification can be calculated from the number of all incorrect/total cases which becomes 0.0597. Some patterns that we saw were that the miss-classification decreased with a smaller threshold. As seen in the confusion matrix, there are 3 false negatives where tumors are diagnosed to be benign when they are actually malignant. The Type II error for false negatives should be reduced as much as possible in the case where a patient could be diagnosed with a malignant tumor or not. I don't see a pattern in the miss-classification other than the rate of false positive decreases as the rate of a false negative increases, and this is the case because the rates are a tradeoff. 
+
+### Part 5. Modified Threshold Value
+
+The first threshold that was used was 0.8. A higher threshold such as 0.8 in the context of our question means that no patients have the disease so the precision is said to increase and the recall decreases. However with the importance of not missing a malignant diagnosis, we want to increase the amount of true positives, which means that recall should be a high number because we want to find all the patients with the malignant tumor, however, this could also lead to low precision because we could diagnose benign tumors as malignant tumors. 
+
+
+#### Results of Modifications
+By adjusting for a lower threshold, we reduce the amount of false negatives that could occur within the model's classifier. The amount of false negatives seen in the confusion matrix with a threshold of 0.1 was lower than that of 0.8. Although the number of false positives increased, it is more important that the amount of false negatives decreased so that patients would be accurately diagnosed with a malignant tumor. 
+
+#### Modified Evaluation Metrics
+```{r}
+#First we need to do some predictions using the test data 
+cancer_evaln <-(predict(cancer_knn,newdata = cancer_test_car))#generates 1s and 0s
+cancer_eval_probn <- predict(cancer_knn,newdata = cancer_test_car, type = "prob")#this gives us the predicted prob, we will need these later for the fairness evaluation
+View(cancer_eval_probn)
+
+#View(cancer_test_car$diagnosis)
+#table(cancer_evaln, cancer_test_car$diagnosis)
+
+adjust_thres(cancer_eval_probn$'1', 0.1, cancer_test_car$diagnosis)
+# the algorithm predicted that one patient who has no cancer would be diagnosed with cancer // decrease the true positive rate // increased sensitivity
+cancer_eval_probn$test <- cancer_test_car$diagnosis 
+
+(error = mean(cancer_evaln != cancer_test_car$diagnosis))
+# the overall error rate is 0.0199 
+
+```
+**Modified Evaluation Metrics from Confusion Matrix**
+
+Accuracy: 0.9104
+
+TPR: 0.9865
+
+FPR: 0.1339
+
+Kappa: 0.8158
+
+F1: 0.8902
+
+Prevalence: 0.3682
+
+Balanced Accuracy: 0.9263
+
+The error rate was calculated and the error rate was found to be 0.0199, verifying that the model is valid. Although the calculated accuracy for the lower threshold was lower than that of the 0.8 threshold, the balanced accuracy improved which is a good result as the data was found to be unbalanced. This also signifies that the model is more accurate at a lower threshold. In the lower threshold, the true positive rate increased from 0.9595 to 0.9865 which means that the model would be able to more accurately diagnose patients who are diagnosed with a malignant tumor with malignant. Both kappa scores were found to have a strong level of agreement for the model and this specific metric represented that more than 64% of the data is reliable.
+
+#### ROC/AUC Modified Plot
+```{r}
+cancer_evaln <- data.frame(pred_class=cancer_evaln, pred_prob=cancer_eval_probn$'1',target=as.numeric(cancer_test_car$diagnosis))
+str(cancer_evaln)
+predn <- prediction(cancer_evaln$pred_prob, cancer_evaln$target)
+
+knn_perfn <- performance(predn, "tpr", "fpr")
+plot(knn_perfn, colorize=TRUE)
+abline(a=0, b=1)
+knn_perf_AUC <- performance(pred, "auc")
+
+print(knn_perf_AUC@y.values)
+```
+
+
+The Area Under the Curve is a good indicator of the performance of the model. The AUC for the model is 0.9896255 which is in the excellent range. This means that the ratio of true positive rate to the false positive rate is high. The higher the AUC, the better the performance of the model is at distinguishing between the benign and malignant tumors. From the graph, we can see that the classifier will be able to detect more True positives and True negatives than False negatives and False positives. 
+
+
+#### Modified LogLoss
+```{r}
+LogLoss(as.numeric(cancer_evaln$pred_prob), as.numeric(cancer_test_car$diagnosis))
+
+```
+
+
+#### Modified F1 Score
+```{r}
+F1_Score(as.numeric(cancer_eval$pred_class), as.numeric(cancer_test_car$diagnosis))
+```
+
+The F1 score was used to balance Precision and Recall. Recall is important when there is a high cost associated with a false negative which is true in this case, because a patient could have a malignant tumor that is diagnosed as benign.
+
+
+### Part 6. Results and Conclusion
+
+Taking into account the evaluation metrics and the predictive capabilities of the model, he kNN model is a good model for classifying the diagnosis of a tumor; more specifically if it is benign or malignant. The evaluation outputs were as stated above. The most important evaluation metrics to solving our question were the false negative rate, balanced accuracy, and the F1 score. The false negative rate decreased with a lower threshold and this was important as it is necessary that the model does not misdiagnose patients with a malignant tumor and predict that they have a benign tumor. The balanced accuracy and F1 score are necessary because the data set is imbalanced and provides a more accurate evaluation of the model. The F1 score was high which meant that the precision to recall ratio. Recall is important when there is a high cost associated with a false negative which is true in this case, because a patient could have a malignant tumor that is diagnosed as benign. However, because the F1 score is high, we can have confidence that the model is better at predicting the false negatives and overall the true rates. 
+
+Some recommendations for improvement include gathering more data which might balance out the dataset, but could lead to some bias. Other than that, the model works well based on the F1 score, balanced accuracy, and the false negative rate.
