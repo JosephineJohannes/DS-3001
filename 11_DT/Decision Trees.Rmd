@@ -41,14 +41,16 @@ winequality <- read.csv("data/winequality-red-ddl.csv")
 View(winequality)
 #str(winequality)
 table(winequality$text_rank)
-
+# Kappa compares across multi-class 
 winequality$text_rank <- fct_collapse(winequality$text_rank,
                                       ave=c("ave","average-ish"),
                                       excellent = "excellent",
                                       good = "good",
                                       poor = c("poor","poor-ish",""))
 table(winequality$text_rank)
-
+# f1 score is good for imbalanced mean: harmonic mean of precision and accuracy 
+#what do you know about your target variable? What models might work best? what are my evaluation metrics 
+# kNN and k-means are only numerical data 
 
 ```
 
@@ -83,7 +85,7 @@ dim(tune)
 
 ```
 
-
+if you use read.csv when you load it in, a . will be added into the variable name -- try to eliminate the space in a variable as much as you can 
 
 ```{r}
 # Choose the features and classes
@@ -103,10 +105,19 @@ fitControl <- trainControl(method = "repeatedcv",
                           returnResamp="all",
                           classProbs = TRUE,
                           allowParallel = TRUE) 
-
+# standard approach to training machine learning models -- how do you want to train the model 
+# number of splits -- 10 fold cross validation 
+# returns the list of resamples that it did 
+# builds the models in parallel using the processes on your computer -- not building the cross valdiation models independently but at the same time, using all your cores and making it more efficient 
 # number - number of folds
 # repeats - number of times the CV is repeated, here it's 5 take the average of
 # those 5 repeats
+
+# many ways that you might go through the training methods 
+# just a superset of what could be many more 
+# certain cross validation methods might be better -- could leave on out cross validation -- takes one column of data out and then trains each column -- maybe overfitting, would take a long time -- big dataset would not be appropriate to use leave one column out
+
+# might want to try different cross validation methods 
 
 # Grid search options for each of the models available in CARET
 # http://topepo.github.io/caret/train-models-by-tag.html#tree-based-model
@@ -116,8 +127,13 @@ grid <- expand.grid(.winnow = c(TRUE,FALSE),
                     .model="tree")
 
 #expand.grid - series of options that are available for model training
-
-#winnow - whether to reduce the feature space -  Works to remove unimportant 
+#gridsearch: elements that are specific to the model that we're building that has ranges of the values that we're observing 
+# model will pick the one that works the best based on the outcome of the grid 
+#winnow - whether to reduce the feature space -  Works to remove unimportant -- goes through a process of eliminating variables based on their contribution to the model 
+# if the error doesn't change, then it drops it and reduces the feature space
+#trials: boosting trials, how many times it's going to build the model over and over again
+# C5.0 is a boosting method that will select and will continue to include over the trials 
+# combined with winnowing: the variables not working will get dropped 
 #features but it doesn't always work, in the above we are winnowing.  
 
 #Actually a pretty good StackExchange post on winnowing:
@@ -141,7 +157,7 @@ View(wine_mdl$pred)
 
 # visualize the re-sample distributions
 xyplot(wine_mdl,type = c("g", "p", "smooth"))
-
+# shows an elbow plot the marginal gains show that the iterations should stop at 10. model complexity: just do 10 boosting iterations and then when we do the boostng then it can be changed to 10. 
 varImp(wine_mdl)
 
 ```
@@ -149,7 +165,7 @@ varImp(wine_mdl)
 
 Let's use the model to predict and the evaluate the performance
 ```{r}
-
+# need to put the predictions in across the class 
 wine_pred_tune = predict(wine_mdl,tune, type= "raw")
 
 View(as_tibble(wine_pred_tune))
@@ -162,10 +178,15 @@ View(as_tibble(wine_pred_tune))
                 dnn=c("Prediction", "Actual"), 
                 mode = "sens_spec"))
 
+# predicting score is good 
+# some inconsistency in the poor and some inconsistency in good but the problem associated is that we don't have a lot of excellent 
+# basically randomly guessing for randomly guessing -- all in different categories 
+# overall, the model works pretty well, but across the excellent category, not so much probably because we don't have enough examples.
 table(tune$text_rank)
 
 (wine_pred_tune_p = predict(wine_mdl,tune,type= "prob"))
-
+# balanced -- looks like many of the variables are important
+# fixed acidity would become the root node 
 ```
 Next we need to use the "tune" dataset to optimize our model, then once 
 we are confident that we've got the best model we see how it 
@@ -181,7 +202,15 @@ looks at the performance of the tree as a whole." - https://www.rulequest.com/se
 The process above is referred to as pessimistic pruning, as it's centered on 
 whether a tree should be pruned or not. 
 See page 381 Applied Predictive Modeling for more details
-
+-- reusing the same functions that we've already used
+-- not a default f1 score that we can optimize 
+-- used an f1 function and used it for the summaryFunction in trainControl (can show the model that you want to optimize) 
+-- changed the control method to leave group out cross validation and then the boosting rounds were expanded
+-- continue to iterate on the tuned dataset and continue to predict with tune if the model is improving 
+ -- probably not going to improve that much -- why we create the tuned dataset so that we can compare to the original model based on adjustments, training methods, and models 
+-- expand grid: the boosting trials are the only variable that you can change 
+-- there'll be constraints to a certain extent 
+ 
 # Let's make some changes and see if we can improve
 
 ```{r}

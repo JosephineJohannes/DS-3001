@@ -11,6 +11,24 @@ editor_options:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+Libraries
+```{r, echo=FALSE}
+library(rio)
+library(plyr)
+library(tidyverse)
+library(rpart)
+library(psych)
+library(pROC)
+#install.packages("rpart.plot")
+library(rpart.plot)
+#install.packages("rattle")
+library(rattle)
+library(caret)
+library(C50) #Need this to pass into caret 
+library(mlbench)
+library(MLmetrics)
+library(ROCR)
+```
 Congrats! You just graduated UVA's MSDS program and got a job working at the 
 Treasury Department. In partnership with Congress members the Treasury has been 
 ask to come up with innovative ways to create tax policy. In doing so they 
@@ -23,7 +41,7 @@ around you but need a fairly robust and flexible approach so you've
 chosen to use decision trees to get started and will possibly move 
 to a ensemble model if needed. 
 
-In doing so, similar to  great data scientists of the past 
+In doing so, similar to great data scientists of the past 
 you remembered the excellent education provided 
 to you at UVA in a undergrad data science course and have outline 
 20ish steps that will need to be undertaken to complete this task 
@@ -31,10 +49,12 @@ to you at UVA in a undergrad data science course and have outline
 to make sure to #comment your work heavily. 
 
 
-```{r}
+```{r, echo=FALSE}
+# url where the data exists 
 url <- "http://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data"
 
-xx <- readr::read_csv(url)
+# download the data and import into R as a csv
+xx <- readr::read_csv(url, col_names=FALSE)
 
 View(xx)
 ```
@@ -47,92 +67,385 @@ mindful of how the model will be used in practice.
 - Make sure all your variables are the correct type (factor, character, etc.)
 
 
-
-```{r}
+```{r, echo=FALSE}
 #1 Load the data, check for missing data and ensure the labels are correct. 
+names <- c("age","workclass","fnlwgt","education","education-num","marital-status","occupation","relationship","race","sex","capital-gain","capital-loss","hours-per-week","native-country", "income-level")
+
+# set column names to names
+colnames(xx) <- names
+colnames(xx) <- make.names(names)
+
+View(xx)
+
+# ensures that the dataset does not contain any NAs
+not <- xx == "?"
+is.na(xx) <- not
+
+xx <- xx[complete.cases(xx), ]
+View(xx)
+# because there are no false inputs in the table, no rows have to be removed
 ```
 
-```{r}
+```{r, echo=FALSE}
 #2 Ensure all the variables are classified correctly including the target 
 # variable
+
+# collapse variables so that there are at max 5 categories
+xx$income.level <- fct_collapse(xx$income.level, below="<=50K", above = ">50K")
+xx$workclass <- fct_collapse(xx$workclass, gov = c("Federal-gov", "Local-gov", "State-gov"), private = "Private", self_employed = c("Self-emp-inc", "Self-emp-not-inc"), Unpaid="Without-pay")
+xx$education <- fct_collapse(xx$education, below_HS = c("1st-4th", "5th-6th", "7th-8th", "Preschool"), HS = c("9th", "10th", "11th", "12th", "HS-grad"), Associate = c("Assoc-acdm", "Assoc-voc"), Bachelor = c("Bachelors", "Some-college", "Prof-school"), Graduate = c("Masters", "Doctorate", "Prof-school"))
+xx$native.country<- fct_collapse(xx$native.country, NorthA = c("United-States", "Canada", "Outlying-US(Guam-USVI-etc)", "Mexico", "Puerto-Rico", "Dominican-Republic", "Haiti", "Guatemala", "Cuba","Honduras", "Jamaica", "Nicaragua", "El-Salvador"), SouthA = c("Trinadad&Tobago", "Ecuador", "Columbia", "Peru"), Asia = c("Cambodia", "China", "Vietnam", "Laos", "Taiwan", "Thailand", "Hong", "Japan", "Philippines", "India", "South", "Iran"), Europe=c("England", "Germany", "Italy","Portugal", "Poland","Holand-Netherlands", "Yugoslavia", "Greece", "Ireland", "France", "Hungary", "Scotland"))
+xx$occupation <- fct_collapse(xx$occupation, other = "Other-service", defense=c("Armed-Forces", "Protective-serv"), desk=c("Adm-clerical", "Exec-managerial", "Sales", "Prof-specialty", "Tech-support"), labor=c("Farming-fishing", "Handlers-cleaners", "Machine-op-inspct", "Priv-house-serv", "Craft-repair", "Transport-moving") )
+xx$relationship <- fct_collapse(xx$relationship, family=c("Husband", "Wife", "Own-child", "Other-relative"), not_family="Not-in-family", single="Unmarried")
+xx$marital.status <- fct_collapse(xx$marital.status, married=c("Married-AF-spouse", "Married-civ-spouse", "Married-spouse-absent"), once_married = c("Divorced", "Separated", "Widowed"), single="Never-married")
+
+# apply the categories as factors 
+factors <- c(2, 4, 6, 7, 8, 9, 10, 14, 15)
+xx[factors] <- lapply(xx[factors], factor)
+str(xx)
+
+# create data frame for necessary columns 
+final_df <- xx[ ,c(-3, -5)]
 ```
 
-```{r}
+```{r, echo=FALSE}
 #3 Don't check for correlated variables....because it doesn't matter with 
 # Decision Trees...the make local greedy decisions. 
+set.seed(1980)
+split_index <- createDataPartition(final_df$income.level, p = .7, #selects the split, 70% training 30% for test 
+                                  list = FALSE,#output of the data, we don't want a list
+                                  times = 1)
+
+# create training dataset 
+train_data <- final_df[split_index, ]
+dim(train_data)
+
+# create testing dataset 
+test <- final_df[-split_index, ]
+dim(test)
+
+# code the decision tree 
+final_tree <- train(income.level~., 
+                   data=train_data,
+                   method='rpart',
+                   na.action = na.omit)
+final_tree
+ 
 ```
 
-```{r}
+
+The highest accuracy seen in the decision tree model is 81%. This is pretty good but the Kappa value associated with that accuracy is 0.38 which is considered a moderate agreement for the data.
+
+
+```{r, echo=FALSE}
 #4 Guess what, you also don't need to standardize the data, 
 #because DTs don't give a ish, they make local decisions...keeps getting easier
+
 ```
 
-```{r}
+```{r, echo=FALSE}
 #5 Determine the baserate or prevalence for the classifier, 
 # what does this number mean?  
+
+# find the total number of elements in a column to find the baserate
+br <- table(xx$income.level)
+br
+total <- length(xx$income.level)
+above_br <- 22654/total
+above_br
+
+below_br <- 7508/total
+below_br
+
 ```
 
-```{r}
+
+#### Prevalence/Baserate 
+The baserate for participants with a salary above 50k is 75%. The baserate for participants with a salary below or equal to 50k is 25%. The baserate shows the probability that a participant will either have a salary above 50k or a salary below or equal to 50k. 
+
+
+#### Partitioning the Data
+```{r, echo=FALSE}
 #6 Split your data into test, tune, and train. (70/15/15)
+part_index_1 <- caret::createDataPartition(final_df$income.level, 
+                                           times=1,                         
+                                           p = 0.70,
+                                           groups=1,                        
+                                           list=FALSE)
 ```
 
-```{r}
+
+### Building the Decision Tree
+```{r, echo=FALSE}
 #7 Build your model using the training data and default settings in caret, 
 # double check to make sure you are using a cross-validation training approach
+train <- xx[part_index_1, ]
+tune_and_test <- xx[-part_index_1, ]
+#The we need to use the function again to create the tuning set 
+tune_and_test_index <- createDataPartition(tune_and_test$income.level,
+          p = .5,
+          list = FALSE,
+          times = 1)
+
+# partition tuning dataset 
+tune <- tune_and_test[tune_and_test_index, ]
+
+# partition testing dataset 
+test <- tune_and_test[-tune_and_test_index, ]
+dim(train)
+dim(test)# these will be slightly off because the data set isn't perfectly even
+#buts its not a issue. 
+dim(tune)
+
+# creating the model with the features that aren't income level 
+features <- train[ ,c(-3, -5, -15)]
+
+# specify the target feature for the model 
+target <- train$income.level 
+
+#Cross Validation process
+fitControl <- trainControl(method = "repeatedcv",
+                          number = 10,
+                          repeats = 5, 
+                          returnResamp="all",
+                          classProbs = TRUE,
+                          allowParallel = TRUE)
+
+# training the model and modifying the feature space 
+grid <- expand.grid(.winnow = c(TRUE,FALSE), 
+                    .trials=c(1,5,10,15,20), 
+                    .model="tree")
+# use winnow for penalized model 
+
+set.seed(1984)
+
+xx_mdl <- train(x=features,
+                y=target,
+                method="C5.0",
+                tuneGrid=grid,
+                trControl=fitControl,
+                verbose=TRUE)
+xx_mdl #provides us the hyper-parameters that were selected through the grid
+# search process. 
+
 ```
 
-```{r}
+```{r, echo=FALSE}
 #8 View the results, what is the most important variable for the tree? 
+
 ```
 
-```{r}
+
+From the results of the model, the there were 3 important variables for the tree. The most important variables were the capital gain, marital status, and age of the person. These variables had an importance of 100.00 . Then the other less important variables were education, occupation, capital loss, hours per week, and relationship. The least important variable for the tree was working class of an individual. The model that worked the best was when the trials = 1, model = tree, and winnow = FALSE. 
+
+
+```{r, echo=FALSE}
 #9 Plot the output of the model to see the tree visually 
+# visualize the re-sample distributions
+xyplot(xx_mdl,type = c("g", "p", "smooth"))
+varImp(xx_mdl)
 ```
 
-```{r}
+
+Based on the c5.0 variable importance, the capital gain was the most important variable for the dataset, and capital loss as well as marital status were considered less important. 
+
+
+```{r, echo=FALSE}
 #10 Use the validation set and the predict function with your model to the
 # estimate the target variable.
+
+# predicting the possibility of having a salary above 50k
+xx_pred_tune = predict(xx_mdl,tune, type= "raw")
+View(as_tibble(xx_pred_tune))
+tot_len <- length(xx_pred_tune)
+tot_len
+above_br <- 3612/tot_len
+above_br
 ```
 
-```{r}
+
+The estimated target variable of having a salary above 50k was calculated to be almost 80%, more accurately, 79.8%. 
+
+
+```{r, echo=FALSE}
 #11 Compare the predicted values to those of the actual by generating a 
 # matrix ("by-hand").
+
+# Use the confusion matrix
+(model_eval_2 <- confusionMatrix(as.factor(xx_pred_tune), 
+                as.factor(tune$income.level), 
+                dnn=c("Prediction", "Actual"), 
+                mode = "sens_spec"))
+model_eval_2
+
 ```
 
-```{r}
+
+The prevalence from the confusion matrix was calculated to be 75%. Compared to the predict function that was used above, the confusion matrix prevalence was lower than that of the predict function.
+
+
+```{r, echo=FALSE}
 #12 Use the the confusion matrix function to check a variety of metrics 
 # and comment on the metric that might be best for this type of analysis given your question.  
+xx_eval <- (predict(final_tree, newdata=test))
+xx_eval_prob <- predict(final_tree, newdata=test, type="prob")
+View(xx_eval_prob)
+
+table(xx_eval, test$income.level)
+
+confusionMatrix(xx_eval, test$income.level, positive = "above", dnn=c("Prediction", "Actual"), mode = "sens_spec")#change to everything
 ```
 
-```{r}
+
+Looking at the metrics, the prevalence that we calculated in an earlier section for the population that has a salary above 50k was 75%. The model also calculated a prevalence of 75%. The Kappa value was measured to be 0.51 which is still considered a moderate interrater agreement. The positive predicted value was calculated to be 88.57% which is a good rate for the positive class as we want to have a higher true positive rate to be able to accurately predict those with a higher salary than 50k. The balanced accuracy was calculated to be 76.17% which is alright for an imbalanced data set. Important evaluation metrics for this data set include the F1 score and Kappa score. 
+
+
+```{r, echo=FALSE}
 #13 Generate a ROC and AUC output, interpret the results
+
+#Quick function to explore various threshold levels and output a confusion matrix
+adjust_thres <- function(x, y, z) {
+  #x=pred_probablities, y=threshold, z=test_outcome
+  thres <- as.factor(ifelse(x > y, "above","below"))
+  confusionMatrix(thres, z, positive = "above", dnn=c("Prediction", "Actual"), mode = "everything")
+}
+
+adjust_thres(xx_eval_prob$above,.60, test$income.level) #Not much changes here because of the high probability splits of the data outcomes. 
+
+xx_eval_prob$test <- test$income.level 
+View(xx_eval_prob)
+(error = mean(xx_eval != test$income.level))#overall error rate, on average when does our prediction not match the actual, looks like around 19%, really just ok. 
+
+
+xx_eval <- tibble(pred_class=xx_eval, pred_prob=xx_eval_prob$above,target=as.numeric(test$income.level))
+View(xx_eval)
+pred <- prediction                         (xx_eval$pred_prob,xx_eval$target)
+View(pred)
+
+
+
+tree_perf <- performance(pred,"tpr","fpr")
+plot(tree_perf, colorize=TRUE)
+abline(a=0, b= 1)
+tree_perf_AUC <- performance(pred,"auc")
+print(tree_perf_AUC@y.values)
+
 ```
 
-```{r}
+
+When the adjust threshold function is used, The values stayed the same as the ones that were calculated in the confusion matrix above. However, the F1 score was calculated to be 0.87 which is a good indicator that the model fits the data well. The positive predicted value is also a high number of 88.57%, further showing that more true positives are being found.
+
+The plotted ROC curve unfortunately does not show a good true positive rate. Instead, it shows that the false positive rate has a greater effect on the model, which is not what we want. The AUC value further validates this as it is very low at 0.179. Due to these metrics, I would say that the performance of this model is not as good as I had previously thought. The threshold level was set to a 0.6 and may change the effectiveness of a model if the threshold level is changed.
+
+
+```{r, echo=FALSE}
 #14 Use the predict function to generate percentages, then select several 
 # different threshold levels using the confusion matrix function and 
 # interpret the results. What patterns did you notice, did the evaluation metrics change? 
+
+## Did the predict function above 
+
+adjust_thres(xx_eval_prob$above,.40, test$income.level)
+
+adjust_thres(xx_eval_prob$above,.80, test$income.level)
+
+adjust_thres(xx_eval_prob$above,.50, test$income.level)
+
 ```
 
-```{r}
+
+When the threshold is adjusted to 0.4, The Kappa value decreases to 0.1976 but the F1 score is similar at 0.87 to when the threshold value was 0.6. The balanced accuracy was 0.57 which is not ideal and I would not recommend using a threshold of 0.4
+
+When the threshold is adjusted to 0.8, the balanced accuracy improves to be 0.76. But when analyzing the confusion matrix, the number of false positives is higher than a threshold that is lower. The F1 score decreased to 0.78 and the positive predicted value is 0.92 which objectively is good, but taking into account all of the measures included, does not mean that this model is the most optimal.
+
+To find a good balance between a threshold of 0.4 and 0.6, I chose to use 0.5 as the threshold. The Kappa value increased to 0.51 which is a moderate level and the F1 score was similar to the threshold of 0.6 where it is 0.87. The balanced accuracy also increased to 0.76 which is similar to the threshold of 0.8. It seems like the pattern is that the model finds more false positives when the threshold increases and is able to capture more true positives when the threshold is lower. 
+
+
+```{r, echo=FALSE}
 #15 Based on your understanding of the model and data adjust several of the hyper-parameters via the built in train control function in caret or build and try new features, does the model quality improve? If so how and why, if not, why not?
 # Use this link: https://rdrr.io/cran/caret/man/trainControl.html to select changes,
 # you aren't expected to understand all these options but explore one or two and 
 # see what happens. 
 
+fitControl_1 <- trainControl(method = "LGOCV",
+                          number = 10,
+                          repeats = 5, 
+                          returnResamp="all",
+                          classProbs = TRUE,
+                          allowParallel = TRUE) 
+xx_mdl_1 <- train(x=features,
+                y=target,
+                method="C5.0",
+                tuneGrid=grid,
+                trControl=fitControl_1,
+                verbose=TRUE)
+
+fitControl_2 <- trainControl(method = "repeatedcv",
+                          number = 10,
+                          repeats = 5, 
+                          returnResamp="all",
+                          classProbs = TRUE,
+                          allowParallel = TRUE,
+                          search = "grid") 
+
+xx_mdl_2 <- train(x=features,
+                y=target,
+                method="C5.0",
+                tuneGrid=grid,
+                trControl=fitControl_2,
+                verbose=TRUE)
+
+
 ```
 
-```{r}
+
+The model for the modified features had values where trials = 20, model = tree, and winnow = FALSE. In this model, the accuracy was calculated to be 0.859 and the Kappa value of 0.59 was higher than the original model which had a Kappa value of 0.4. I think that this model would be better suited for the dataset. It seems like the model improved by some amount, but not significantly. 
+
+The model for the second set of modified features had values where trials = 1, model = tree, and winnow = FALSE. This model had an accuracy of 0.86 and the Kappa value was higher than the other model and had a value of 0.6, showing that the data was in moderate agreement.  It seems like this model also improved by some amount and having a good Kappa value is important. 
+
+
+```{r, echo=FALSE}
 #16 Once you are confident that your model is not improving, via changes 
-# implemented on the training set and evaluated on the the validation set (item 16), predict with the test set and report a final evaluation of the model. Discuss the output in comparison with the previous evaluations.  
+# implemented on the training set and evaluated on the the validation set (item 16), predict with the test set and report a final evaluation of the model. Discuss the output in comparison with the previous evaluations.
+
+#Evaluation of Model 1 
+xx_pred_tune_1 = predict(xx_mdl_1,tune, type= "raw")
+#Lets use the confusion matrix
+(model_eval_1 <- confusionMatrix(as.factor(xx_pred_tune_1), 
+                as.factor(tune$income.level), 
+                dnn=c("Prediction", "Actual"), 
+                mode = "sens_spec"))
+model_eval_1
+
+# Evaluation of Model 2
+xx_pred_tune_2 = predict(xx_mdl_2,tune, type= "raw")
+#Lets use the confusion matrix
+(model_eval_2 <- confusionMatrix(as.factor(xx_pred_tune_2), 
+                as.factor(tune$income.level), 
+                dnn=c("Prediction", "Actual"), 
+                mode = "sens_spec"))
+model_eval_2
+
 ```
 
-```{r}
+
+For the first evaluated model, the positive predicted value had a similar rate to the previous models such as 88%. The balanced accuracy was somewhat better with 78% and this was a good sign for the model as the data was unbalanced. 
+
+For the second evaluated model, the models had the same numbers as the evaluation metrics, which makes it seem like there was not a lot of modification in the train control package. It seems like both models predicted similar outcomes. 
+
+
+```{r, echo=FALSE}
 #17 Summarize what you learned along the way and make recommendations on how this could be used moving forward, being careful not to over promise. 
 ```
 
-```{r}
+
+Overall, from this data set, I learned that the most important variable in determining if a participant's salary was above or below 50k was the capital gains. The next most important variables were the marital status and the age of the person. This model could be improved because of it's moderate Kappa value as well as its mediocre balanced accuracy value. Another downside to the model was the ROC Curve and AUC value, which was lower than expected. However, the F1 score for the model was high which was good when it came to the model's accuracy. To improve this model, I would try to use a lower threshold and I would also try to standardize the categories in which the participants were asked about. This model has a decent chance at predicting the true positives and true negatives correctly, but would have to be further developed to ensure that the model is efficacious. 
+
+
+```{r, echo=FALSE}
 #18 What was the most interesting or hardest part of this process and what questions do you still have? 
 ```
 
+
+The most interesting part of this process was collapsing some of the categories into 5 or less categories. For the countries, I decided to categorize the inputs by continent and for the occupation, I decided to do a very general categorization. The hardest part of the process was understanding which function to use sometimes as there are multiple ways to process the data. I think it was also interesting that the ROC curve for my model was better at testing for the false positive rate rather than the true positive rate so I don't think my model would be the most effective at predicting participant's salary ranges. Some questions that I have would be how would I be able to determine which threshold is the most appropriate for my data and how would I be able to determine the right method for the trainControl function in the Caret library. 
 
