@@ -48,9 +48,11 @@ winequality$text_rank <- fct_collapse(winequality$text_rank,
                                       good = "good",
                                       poor = c("poor","poor-ish",""))
 table(winequality$text_rank)
+
 # f1 score is good for imbalanced mean: harmonic mean of precision and accuracy 
 #what do you know about your target variable? What models might work best? what are my evaluation metrics 
 # kNN and k-means are only numerical data 
+
 
 ```
 
