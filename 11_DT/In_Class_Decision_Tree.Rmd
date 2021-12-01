@@ -59,6 +59,10 @@ xx <- readr::read_csv(url, col_names=FALSE)
 View(xx)
 ```
 
+```{r}
+names <- c("age","workclass","fnlwgt","education","education-num","marital-status","occupation","relationship","race","sex","capital-gain","capital-loss","hours-per-week","native-country", "salary")
+```
+
 
 ```{r, echo=FALSE}
 #1 Load the data, check for missing data and ensure the labels are correct. 
