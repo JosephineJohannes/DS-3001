@@ -69,23 +69,25 @@ randomForest(formula,             #<- A formula to solve for when using random f
 # use to test out the quality of our model.  
 str(pregnancy)
 # First create a vector of numbers we'll sample.
-pregnancy = import("pregnancy.csv", check.names = TRUE, stringsAsFactors = FALSE)
+pregnancy = import("data/pregnancy.csv", check.names = TRUE, stringsAsFactors = FALSE)
 pregnancy_factors = as.data.frame(apply(pregnancy,                 #<- the data set to apply the function to
                           2,                         #<- for each column
                           function(x) as.factor(x)))  #<- change each variable to factor
 str(pregnancy_factors)
-
+# this dataset is already one hot encoded by itself and all the variables are binary
 sample_rows = 1:nrow(pregnancy_factors)
 sample_rows
 
 # sample() is a randomized function, use set.seed() to make your results reproducible.
 set.seed(1984) #sample(x, size, replace = FALSE, prob = NULL)
+# sample is a base R package that samples based on the dimensions of the dataset
 test_rows = sample(sample_rows,
                    dim(pregnancy)[1]*.10, #start with 10% of our dataset, could do 20%
                    # but random forest does require more training data because of the 
                    # sampling so 90% might be a better approach with this small of a dataset
                    replace = FALSE)# We don't want duplicate samples
-
+# stratifies based on multi-class
+# disadvantage to doing it this way 
 str(test_rows)
 
 
@@ -124,7 +126,7 @@ mytry_tune(pregnancy)
 str(pregnancy_train)
        
 set.seed(2023)	
-pregnancy_RF = randomForest(PREGNANT~.,          #<- Formula: response variable ~ predictors.
+pregnancy_RF = randomForest(as.factor(PREGNANT)~.,          #<- Formula: response variable ~ predictors.
                             #   The period means 'use all other variables in the data'.
                             pregnancy_train,     #<- A data frame with the variables to be used.
                             #y = NULL,           #<- A response vector. This is unnecessary because we're specifying a response formula.
@@ -154,6 +156,7 @@ pregnancy_RF = randomForest(PREGNANT~.,          #<- Formula: response variable 
 # Look at the output of the random forest.
 pregnancy_RF
 
+# feature of random forest object and can do it like pregnancy_RF$confusion
 #==================================================================================
 
 #### Random forest output ####
@@ -213,10 +216,10 @@ View(as.data.frame(pregnancy_RF$inbag))
 
 inbag <- as.data.frame(pregnancy_RF$inbag)
 
-sum(inbag[,800])
+sum(inbag[,800]) # get 100 because there are 100 trees everytime
 
-dim(pregnancy_RF$inbag)
-
+dim(pregnancy_RF$inbag) # 1800 rows in the dataset and 100 columns because of a 100 trees 
+# 4 variables 
 #==================================================================================
 
 #### Random forest output ####
@@ -272,14 +275,17 @@ View(pregnancy_RF_error)
 
 library(plotly)
 
-rm(fig)
+#rm(fig)
 fig <- plot_ly(x=pregnancy_RF_error$`Number of Trees`, y=pregnancy_RF_error$Diff,name="Diff", type = 'scatter', mode = 'lines')
 fig <- fig %>% add_trace(y=pregnancy_RF_error$`Out of the Box`, name="OOB_Er")
 fig <- fig %>% add_trace(y=pregnancy_RF_error$`Not Pregnant`, name="Not Pregnant")
 fig <- fig %>% add_trace(y=pregnancy_RF_error$Pregnant, name="Pregnant")
 
 fig
-
+# takes almost no trees and it finds the value really quickly
+# more volatility associated with the red pregnant line 
+# shows the errors associated with each category 
+# the algorithm stabilizes before we go through too many trees 
 #==================================================================================
 
 #### Optimize the random forest model ####
@@ -299,7 +305,7 @@ View(pregnancy_RF_error)
 
 # Let's create a random forest model with 77 trees.
 set.seed(2022)	
-pregnancy_RF_2 = randomForest(PREGNANT~.,          #<- formula, response variable ~ predictors.
+pregnancy_RF_2 = randomForest(as.factor(PREGNANT)~.,          #<- formula, response variable ~ predictors.
                               #   the period means 'use all other variables in the data'.
                               pregnancy_train,     #<- A data frame with variables to be used.
                               #y = NULL,           #<- A response vector. This is unnecessary because we're specifying a response formula.
@@ -322,6 +328,10 @@ pregnancy_RF_2 = randomForest(PREGNANT~.,          #<- formula, response variabl
                               keep.forest = TRUE,  #<- If set to FALSE, the forest will not be retained in the output object. If xtest is given, defaults to FALSE.
                               keep.inbag = TRUE)   #<- Should an n by ntree matrix be returned that keeps track of which samples are in-bag in which trees? 
 
+# by reducing the number of trees, we want to reduce the number of variables
+# put weak learners together, they might understand one part of the data really well 
+# like experts in their field 
+# creating biased models and by majority, they cancel each other out 
 #==================================================================================
 
 #### Compare random forest models ####
@@ -347,15 +357,15 @@ pregnancy_predict = predict(pregnancy_RF_2,      #<- a randomForest model
                             proximity = FALSE)    #<- should proximity measures be computed
 
 #==================================================================================
-
+# this code is broken 
 View(pregnancy_predict)
 
 #### Generate predictions with your model ####
 
 # Let's look at the accuracy of the predictions. 
 View(pregnancy_predict)
-View(pregnancy_predict$predicted$aggregate)   #<- the aggregate class prediction
-View(pregnancy_predict$predicted$individual)  #<- the class prediction of each individual tree
+View(pregnancy_predict$aggregate)   #<- the aggregate class prediction
+View(pregnancy_predict$individual)  #<- the class prediction of each individual tree
 
 
 #==================================================================================
@@ -364,14 +374,14 @@ View(pregnancy_predict$predicted$individual)  #<- the class prediction of each i
 
 # Let's view the results as a data frame.
 View(pregnancy_test)
-View(as.data.frame(pregnancy_predict$predicted$aggregate))
+View(as.data.frame(pregnancy_predict$aggregate))
 
 #==================================================================================
 
 #### Generate predictions with your model ####
 
 # View the predictions of individual trees.
-View(as.data.frame(pregnancy_predict$predicted$individual))
+View(as.data.frame(pregnancy_predict$individual))
 
 #==================================================================================
 
@@ -379,7 +389,7 @@ View(as.data.frame(pregnancy_predict$predicted$individual))
 
 # Let's create a summary data frame, basically adding the prediction to the test set. 
 pregnancy_test_pred = data.frame(pregnancy_test, 
-                                 Prediction = pregnancy_predict$predicted$aggregate)
+                                 Prediction = pregnancy_predict$aggregate)
 View(pregnancy_test_pred)
 
 

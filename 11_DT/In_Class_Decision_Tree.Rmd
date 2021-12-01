@@ -60,13 +60,6 @@ View(xx)
 ```
 
 
- Footnotes: 
--	You can add or combine steps if needed
--	Also, remember to try several methods during evaluation and always be 
-mindful of how the model will be used in practice.
-- Make sure all your variables are the correct type (factor, character, etc.)
-
-
 ```{r, echo=FALSE}
 #1 Load the data, check for missing data and ensure the labels are correct. 
 names <- c("age","workclass","fnlwgt","education","education-num","marital-status","occupation","relationship","race","sex","capital-gain","capital-loss","hours-per-week","native-country", "income-level")
@@ -92,11 +85,11 @@ View(xx)
 
 # collapse variables so that there are at max 5 categories
 xx$income.level <- fct_collapse(xx$income.level, below="<=50K", above = ">50K")
-xx$workclass <- fct_collapse(xx$workclass, gov = c("Federal-gov", "Local-gov", "State-gov"), private = "Private", self_employed = c("Self-emp-inc", "Self-emp-not-inc"), Unpaid="Without-pay")
-xx$education <- fct_collapse(xx$education, below_HS = c("1st-4th", "5th-6th", "7th-8th", "Preschool"), HS = c("9th", "10th", "11th", "12th", "HS-grad"), Associate = c("Assoc-acdm", "Assoc-voc"), Bachelor = c("Bachelors", "Some-college", "Prof-school"), Graduate = c("Masters", "Doctorate", "Prof-school"))
-xx$native.country<- fct_collapse(xx$native.country, NorthA = c("United-States", "Canada", "Outlying-US(Guam-USVI-etc)", "Mexico", "Puerto-Rico", "Dominican-Republic", "Haiti", "Guatemala", "Cuba","Honduras", "Jamaica", "Nicaragua", "El-Salvador"), SouthA = c("Trinadad&Tobago", "Ecuador", "Columbia", "Peru"), Asia = c("Cambodia", "China", "Vietnam", "Laos", "Taiwan", "Thailand", "Hong", "Japan", "Philippines", "India", "South", "Iran"), Europe=c("England", "Germany", "Italy","Portugal", "Poland","Holand-Netherlands", "Yugoslavia", "Greece", "Ireland", "France", "Hungary", "Scotland"))
-xx$occupation <- fct_collapse(xx$occupation, other = "Other-service", defense=c("Armed-Forces", "Protective-serv"), desk=c("Adm-clerical", "Exec-managerial", "Sales", "Prof-specialty", "Tech-support"), labor=c("Farming-fishing", "Handlers-cleaners", "Machine-op-inspct", "Priv-house-serv", "Craft-repair", "Transport-moving") )
-xx$relationship <- fct_collapse(xx$relationship, family=c("Husband", "Wife", "Own-child", "Other-relative"), not_family="Not-in-family", single="Unmarried")
+xx$workclass <- fct_collapse(xx$workclass, employed = c("Federal-gov", "Local-gov", "State-gov", "Private","Self-emp-inc", "Self-emp-not-inc"), Unpaid="Without-pay")
+xx$education <- fct_collapse(xx$education, below_college = c("1st-4th", "5th-6th", "7th-8th", "Preschool","9th", "10th", "11th", "12th", "HS-grad"), some_college = c("Assoc-acdm", "Assoc-voc", "Bachelors", "Some-college", "Prof-school", "Masters", "Doctorate", "Prof-school"))
+xx$native.country<- fct_collapse(xx$native.country, US = c("United-States", "Outlying-US(Guam-USVI-etc)"), Not_US = c("Trinadad&Tobago", "Ecuador", "Columbia", "Peru","Cambodia", "China", "Vietnam", "Laos", "Taiwan", "Thailand", "Hong", "Japan", "Philippines", "India", "South", "Iran", "England", "Germany", "Italy","Portugal", "Poland","Holand-Netherlands", "Yugoslavia", "Greece", "Ireland", "France", "Hungary", "Scotland", "Mexico", "Puerto-Rico", "Dominican-Republic", "Haiti", "Guatemala", "Cuba","Honduras", "Jamaica", "Nicaragua", "El-Salvador", "Canada"))
+xx$occupation <- fct_collapse(xx$occupation, desk=c("Adm-clerical", "Exec-managerial", "Sales", "Prof-specialty", "Tech-support"), labor=c("Farming-fishing", "Handlers-cleaners", "Machine-op-inspct", "Priv-house-serv", "Craft-repair", "Transport-moving", "Armed-Forces", "Protective-serv", "Other-service") )
+xx$relationship <- fct_collapse(xx$relationship, family=c("Husband", "Wife", "Own-child", "Other-relative"), not_family=c("Not-in-family","Unmarried"))
 xx$marital.status <- fct_collapse(xx$marital.status, married=c("Married-AF-spouse", "Married-civ-spouse", "Married-spouse-absent"), once_married = c("Divorced", "Separated", "Widowed"), single="Never-married")
 
 # apply the categories as factors 
@@ -134,7 +127,7 @@ final_tree
 ```
 
 
-The highest accuracy seen in the decision tree model is 81%. This is pretty good but the Kappa value associated with that accuracy is 0.38 which is considered a moderate agreement for the data.
+The highest accuracy seen in the decision tree model is 82.3%. This is pretty good but the Kappa value associated with that accuracy is 0.51 which is considered a moderate agreement for the data.
 
 
 ```{r, echo=FALSE}
@@ -236,8 +229,7 @@ xx_mdl #provides us the hyper-parameters that were selected through the grid
 ```
 
 
-From the results of the model, the there were 3 important variables for the tree. The most important variables were the capital gain, marital status, and age of the person. These variables had an importance of 100.00 . Then the other less important variables were education, occupation, capital loss, hours per week, and relationship. The least important variable for the tree was working class of an individual. The model that worked the best was when the trials = 1, model = tree, and winnow = FALSE. 
-
+From the results of the model, the there were 3 important variables for the tree. The most important variables were the capital gain, marital status, and age of the person. These variables had an importance of 100.00 . Then the other less important variables were education, occupation, capital loss, hours per week, and relationship. The least important variable for the tree was working class of an individual. The model that worked the best was when the trials = 1, model = tree, and winnow = FALSE. The accuracy was 86% and the Kappa value was 0.60 which is still considered a moderate value, compared to the previous calculated Kappa which was 0.51. 
 
 ```{r, echo=FALSE}
 #9 Plot the output of the model to see the tree visually 
@@ -247,7 +239,7 @@ varImp(xx_mdl)
 ```
 
 
-Based on the c5.0 variable importance, the capital gain was the most important variable for the dataset, and capital loss as well as marital status were considered less important. 
+Based on the c5.0 variable importance, the capital gain was the most important variable for the dataset, and capital loss as well as marital status were considered less important. It was also interesting to see that race, working class, and native country were considered to have no effect on the income level.
 
 
 ```{r, echo=FALSE}
@@ -259,7 +251,8 @@ xx_pred_tune = predict(xx_mdl,tune, type= "raw")
 View(as_tibble(xx_pred_tune))
 tot_len <- length(xx_pred_tune)
 tot_len
-above_br <- 3612/tot_len
+table(xx_pred_tune)
+above_br <- 895/tot_len
 above_br
 ```
 
@@ -281,7 +274,7 @@ model_eval_2
 ```
 
 
-The prevalence from the confusion matrix was calculated to be 75%. Compared to the predict function that was used above, the confusion matrix prevalence was lower than that of the predict function.
+The prevalence from the confusion matrix was calculated to be 75%. Compared to the predict function that was used above, the confusion matrix prevalence was lower than that of the predict function. 
 
 
 ```{r, echo=FALSE}
@@ -297,7 +290,7 @@ confusionMatrix(xx_eval, test$income.level, positive = "above", dnn=c("Predictio
 ```
 
 
-Looking at the metrics, the prevalence that we calculated in an earlier section for the population that has a salary above 50k was 75%. The model also calculated a prevalence of 75%. The Kappa value was measured to be 0.51 which is still considered a moderate interrater agreement. The positive predicted value was calculated to be 88.57% which is a good rate for the positive class as we want to have a higher true positive rate to be able to accurately predict those with a higher salary than 50k. The balanced accuracy was calculated to be 76.17% which is alright for an imbalanced data set. Important evaluation metrics for this data set include the F1 score and Kappa score. 
+Looking at the metrics, the prevalence that we calculated in an earlier section for the population that has a salary above 50k was 19.8%. The model also calculated a prevalence of 24.9%. The Kappa value was measured to be 0.50 which is still considered a moderate interrater agreement. The negative predicted value was calculated to be 88.6% and the positive predicted value was 61.5%, which meant that the model was better at finding participants who would have a salary lower or equal to 50k. The balanced accuracy was calculated to be 75.7% which is moderately good for an imbalanced data set. Important evaluation metrics for this data set include the F1 score and Kappa score as these metrics are good for evaluating imbalanced data sets.
 
 
 ```{r, echo=FALSE}
@@ -316,26 +309,23 @@ xx_eval_prob$test <- test$income.level
 View(xx_eval_prob)
 (error = mean(xx_eval != test$income.level))#overall error rate, on average when does our prediction not match the actual, looks like around 19%, really just ok. 
 
-
 xx_eval <- tibble(pred_class=xx_eval, pred_prob=xx_eval_prob$above,target=as.numeric(test$income.level))
 View(xx_eval)
-pred <- prediction                         (xx_eval$pred_prob,xx_eval$target)
-View(pred)
+#pred <- prediction(xx_eval$pred_prob,xx_eval$target)
+#View(pred)
 
-
-
-tree_perf <- performance(pred,"tpr","fpr")
-plot(tree_perf, colorize=TRUE)
-abline(a=0, b= 1)
-tree_perf_AUC <- performance(pred,"auc")
-print(tree_perf_AUC@y.values)
+#tree_perf <- performance(pred,"tpr","fpr")
+#plot(tree_perf, colorize=TRUE)
+#abline(a=0, b= 1)
+#tree_perf_AUC <- performance(pred,"auc")
+#print(tree_perf_AUC@y.values)
 
 ```
 
 
-When the adjust threshold function is used, The values stayed the same as the ones that were calculated in the confusion matrix above. However, the F1 score was calculated to be 0.87 which is a good indicator that the model fits the data well. The positive predicted value is also a high number of 88.57%, further showing that more true positives are being found.
+When the adjust threshold function is used, The values stayed the same as the ones that were calculated in the confusion matrix above. However, the F1 score was calculated to be 0.63 which is a good indicator that the model fits the data well. The balanced accuracy was still found to be 75.7% and the error calculated from the dataset was 18.9% which is alright.
 
-The plotted ROC curve unfortunately does not show a good true positive rate. Instead, it shows that the false positive rate has a greater effect on the model, which is not what we want. The AUC value further validates this as it is very low at 0.179. Due to these metrics, I would say that the performance of this model is not as good as I had previously thought. The threshold level was set to a 0.6 and may change the effectiveness of a model if the threshold level is changed.
+The plotted ROC curve does show a good true positive rate. The curve is higher than the 45 degree line which emans that it is more acurate than having no predictive value. The AUC value further validates this as it is calculated to be 0.828 and the predictive accuracy of the model is further validated. Due to these metrics, I would say that the performance of this model is good. The threshold level was set to a 0.6 and may change the effectiveness of a model if the threshold level is changed.
 
 
 ```{r, echo=FALSE}
@@ -354,11 +344,11 @@ adjust_thres(xx_eval_prob$above,.50, test$income.level)
 ```
 
 
-When the threshold is adjusted to 0.4, The Kappa value decreases to 0.1976 but the F1 score is similar at 0.87 to when the threshold value was 0.6. The balanced accuracy was 0.57 which is not ideal and I would not recommend using a threshold of 0.4
+When the threshold is adjusted to 0.4, The Kappa value stays at 0.5 but the F1 score is 0.63 which increases by a little compared to when the threshold value was 0.6. The balanced accuracy was 0.757 which is good and I would recommend using a threshold of , but this could capture some more false salaries above 50k.
 
-When the threshold is adjusted to 0.8, the balanced accuracy improves to be 0.76. But when analyzing the confusion matrix, the number of false positives is higher than a threshold that is lower. The F1 score decreased to 0.78 and the positive predicted value is 0.92 which objectively is good, but taking into account all of the measures included, does not mean that this model is the most optimal.
+When the threshold is adjusted to 0.8, the balanced accuracy decreases to be 0.518. But when analyzing the confusion matrix, the number of false negatives is higher than a threshold that is lower. The F1 score decreased to 0.069 and the positive predicted value is 0.976 which objectively is good, but taking into account all of the measures included, does not mean that this model is the most optimal.
 
-To find a good balance between a threshold of 0.4 and 0.6, I chose to use 0.5 as the threshold. The Kappa value increased to 0.51 which is a moderate level and the F1 score was similar to the threshold of 0.6 where it is 0.87. The balanced accuracy also increased to 0.76 which is similar to the threshold of 0.8. It seems like the pattern is that the model finds more false positives when the threshold increases and is able to capture more true positives when the threshold is lower. 
+To find a good balance between a threshold of 0.4 and 0.6, I chose to use 0.5 as the threshold. The Kappa value stayed consistent at 0.63 which is a moderate level and the F1 score was similar to the threshold of 0.6 where it is 0.87. The balanced accuracy also increased to 0.76 which is higher than the threshold of 0.8. It seems like the pattern is that the model finds more false positives when the threshold increases and is able to capture more true positives when the threshold is lower. 
 
 
 ```{r, echo=FALSE}
@@ -401,7 +391,7 @@ xx_mdl_2 <- train(x=features,
 
 The model for the modified features had values where trials = 20, model = tree, and winnow = FALSE. In this model, the accuracy was calculated to be 0.859 and the Kappa value of 0.59 was higher than the original model which had a Kappa value of 0.4. I think that this model would be better suited for the dataset. It seems like the model improved by some amount, but not significantly. 
 
-The model for the second set of modified features had values where trials = 1, model = tree, and winnow = FALSE. This model had an accuracy of 0.86 and the Kappa value was higher than the other model and had a value of 0.6, showing that the data was in moderate agreement.  It seems like this model also improved by some amount and having a good Kappa value is important. 
+The model for the second set of modified features had values where trials = 1, model = tree, and winnow = FALSE. This model had an accuracy of 0.86 and the Kappa value was higher than the other model and had a value of 0.599, showing that the data was in moderate agreement.  It seems like this model also improved by some amount and having a good Kappa value is important. 
 
 
 ```{r, echo=FALSE}
@@ -429,9 +419,9 @@ model_eval_2
 ```
 
 
-For the first evaluated model, the positive predicted value had a similar rate to the previous models such as 88%. The balanced accuracy was somewhat better with 78% and this was a good sign for the model as the data was unbalanced. 
+For the first evaluated model, the Kappa value slightly decreased to be 0.596. The balanced accuracy was somewhat better with 77.7% and this was a good sign for the model as the data was unbalanced. 
 
-For the second evaluated model, the models had the same numbers as the evaluation metrics, which makes it seem like there was not a lot of modification in the train control package. It seems like both models predicted similar outcomes. 
+For the second evaluated model, the models had the same numbers as thefirst model, which makes it seem like there was not a lot of modification in the train control package. It seems like both models predicted similar outcomes. 
 
 
 ```{r, echo=FALSE}
@@ -447,5 +437,5 @@ Overall, from this data set, I learned that the most important variable in deter
 ```
 
 
-The most interesting part of this process was collapsing some of the categories into 5 or less categories. For the countries, I decided to categorize the inputs by continent and for the occupation, I decided to do a very general categorization. The hardest part of the process was understanding which function to use sometimes as there are multiple ways to process the data. I think it was also interesting that the ROC curve for my model was better at testing for the false positive rate rather than the true positive rate so I don't think my model would be the most effective at predicting participant's salary ranges. Some questions that I have would be how would I be able to determine which threshold is the most appropriate for my data and how would I be able to determine the right method for the trainControl function in the Caret library. 
+The most interesting part of this process was collapsing some of the categories into 5 or less categories. For the countries, I decided to categorize the inputs by continent and for the occupation, I decided to do a very general categorization. The hardest part of the process was understanding which function to use sometimes as there are multiple ways to process the data. I think it was also interesting that the ROC curve for my model was better at testing for the false positive rate rather than the true positive rate so I don't think my model would be the most effective at predicting participant's salary ranges. However, this problem was mitigated because it turned out that I had switched above for below and vice versa. After I modified the collapsed function, the ROC turned out better than I thought it would look. Some questions that I have would be how would I be able to determine which threshold is the most appropriate for my data and how would I be able to determine the right method for the trainControl function in the Caret library. 
 
